@@ -1,0 +1,10 @@
+menu "Muse bridge"
+
+    config MUSE_HATCH_COMPACT_BUFFERS
+        bool "Smaller Muse session buffers"
+        default y
+        help
+            Keeps the Muse session's PSRAM buffers small (about 300 KB instead
+            of 830 KB), leaving room for xiaozhi.
+
+endmenu

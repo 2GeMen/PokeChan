@@ -37,7 +37,11 @@
 # Build files
 build/
 cmake-build-*/
-/components/
+/components/*
+# Muse bridge components live in the repo
+!/components/muse_hatch/
+!/components/noise_core/
+!/components/minimp3/
 managed_components/
 
 # PlatformIO

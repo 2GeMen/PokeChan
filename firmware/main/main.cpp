@@ -9,6 +9,7 @@
 #include <mooncake.h>
 #include <apps/apps.h>
 #include <hal/hal.h>
+#include <muse_bridge.h>
 
 using namespace mooncake;
 using namespace smooth_ui_toolkit;
@@ -21,6 +22,9 @@ extern "C" void app_main(void)
 
     // HAL init
     GetHAL().init();
+
+    // Muse chat session and its serial console
+    muse_bridge_start();
 
     // Setup ui hal
     ui_hal::on_delay([](uint32_t ms) { GetHAL().delay(ms); });

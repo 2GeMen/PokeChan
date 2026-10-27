@@ -8,10 +8,86 @@
 #include <mcp_server.h>
 #include <stackchan/stackchan.h>
 #include <apps/common/common.h>
+#include <assets/assets.h>
+#include <muse_bridge.h>
+#include "board/hal_bridge.h"
 
 using namespace stackchan;
 
 static const std::string_view _tag = "HAL-MCP";
+
+// Muse answers well after the tool call that asked has returned, so when one
+// comes it chimes; the user then asks for it (self.muse.get_answer). The
+// xiaozhi.me server ignores text sent as a wake word, so the device can't
+// start a turn that reads it out by itself.
+static void _on_muse_answer(const char* question, const char* answer)
+{
+    mclog::tagInfo(_tag, "muse answered: {}", question);
+    hal_bridge::app_play_sound(OGG_NEW_NOTIFICATION);
+}
+
+static void _add_muse_tools(McpServer& mcp_server)
+{
+    muse_bridge_set_answer_cb(_on_muse_answer);
+
+    mclog::tagInfo(_tag, "add muse.get_brief tool");
+    mcp_server.AddTool(
+        "self.muse.get_brief",
+        "获取用户今天和明天的日程安排，以及需要注意的重要邮件。内容来自用户的个人助理 Muse（它连着用户的 Google "
+        "日历和 Gmail），已提前缓存，会立即返回。用户问今天/明天有什么安排、日程、课程、会议、邮件时，优先调用这个工具，"
+        "然后用自然的口语转述。",
+        std::vector<Property>{}, [](const PropertyList&) -> ReturnValue {
+            std::string brief(3072, '\0');
+            int age = muse_bridge_brief(brief.data(), brief.size());
+            brief.resize(strlen(brief.c_str()));
+            if (age < 0 || brief.empty()) {
+                muse_bridge_refresh_brief();
+                return std::string("Muse 的日程简报还在准备，大约一分钟后再问一次。也可以用 self.muse.ask 直接问 Muse。");
+            }
+            return fmt::format("{}\n（这是 {} 分钟前从 Muse 获取的）", brief, age / 60);
+        });
+
+    mclog::tagInfo(_tag, "add muse.ask tool");
+    mcp_server.AddTool(
+        "self.muse.ask",
+        "把问题转交给用户的个人助理 Muse。Muse 能查看用户的 Gmail、Google 日历和个人记忆。用户说“问问 Muse”、"
+        "“用 Muse 查”，或者问到需要个人信息、邮件或日程细节而 self.muse.get_brief 里没有的问题时调用。"
+        "Muse 需要 10 到 60 秒才能回答，这个工具会立刻返回；调用后告诉用户“我去问问 Muse，"
+        "它回复后我会叮一声，到时候问我‘Muse 怎么说’就行”。",
+        PropertyList({Property("question", kPropertyTypeString, std::string(""))}),
+        [](const PropertyList& properties) -> ReturnValue {
+            auto question = properties["question"].value<std::string>();
+            mclog::tagInfo(_tag, "muse.ask: {}", question);
+            if (question.empty()) {
+                return std::string("没有问题内容");
+            }
+            if (!muse_bridge_ask(question.c_str())) {
+                return std::string("Muse 现在忙不过来，请稍后再问。");
+            }
+            return std::string("已经转给 Muse 了。它回复后我会叮一声，到时候问我“Muse 怎么说”。");
+        });
+
+    mclog::tagInfo(_tag, "add muse.get_answer tool");
+    mcp_server.AddTool("self.muse.get_answer",
+                       "读取 Muse 对上一个问题的回复。用户问“Muse 怎么说”“Muse 回复了吗”，或收到 Muse "
+                       "回复提示时调用，然后用自然的口语转述回复内容。",
+                       std::vector<Property>{}, [](const PropertyList&) -> ReturnValue {
+                           mclog::tagInfo(_tag, "muse.get_answer");
+                           std::string question(256, '\0');
+                           std::string answer(3072, '\0');
+                           int age = muse_bridge_last_answer(question.data(), question.size(), answer.data(),
+                                                             answer.size());
+                           question.resize(strlen(question.c_str()));
+                           answer.resize(strlen(answer.c_str()));
+                           if (muse_bridge_busy() && (age < 0 || answer.empty())) {
+                               return std::string("Muse 还在想，请稍等。");
+                           }
+                           if (age < 0 || answer.empty()) {
+                               return std::string("还没有向 Muse 提过问题。");
+                           }
+                           return fmt::format("问题：{}\nMuse 的回复（{} 秒前）：{}", question, age, answer);
+                       });
+}
 
 void Hal::xiaozhi_mcp_init()
 {
@@ -146,4 +222,6 @@ void Hal::xiaozhi_mcp_init()
                            tools::stop_reminder(id);
                            return true;
                        });
+
+    _add_muse_tools(mcp_server);
 }

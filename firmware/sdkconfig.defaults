@@ -81,3 +81,8 @@ CONFIG_LV_USE_SNAPSHOT=y
 CONFIG_LV_USE_IMGFONT=y
 CONFIG_LV_BUILD_EXAMPLES=n
 CONFIG_LV_BUILD_DEMOS=n
+
+# Muse bridge: the Noise session derives keys with HKDF
+CONFIG_MBEDTLS_HKDF_C=y
+# Muse bridge: lets EXT_RAM_BSS_ATTR buffers (the Muse session's 10 KB turn state) live in PSRAM
+CONFIG_SPIRAM_ALLOW_BSS_SEG_EXTERNAL_MEMORY=y
