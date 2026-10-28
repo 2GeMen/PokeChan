@@ -14,6 +14,7 @@
 #include <algorithm>
 #include <mutex>
 #include "board/hal_bridge.h"
+#include "board/avatar_character.h"
 
 using namespace stackchan;
 
@@ -222,6 +223,56 @@ void Hal::xiaozhi_mcp_init()
 
             return true;
         });
+
+    mclog::tagInfo(_tag, "add robot.set_character tool");
+    mcp_server.AddTool(
+        "self.robot.set_character",
+        "切换机器人屏幕上的脸（互动形象）。可选：stackchan（默认的 Stack-chan 脸）、pikachu（皮卡丘）、"
+        "charmander（小火龙）、bulbasaur（妙蛙种子）、squirtle（杰尼龟）、ditto（百变怪）。"
+        "用户说“换成皮卡丘”“变成小火龙”“换回原来的脸”时调用；选择会保存，重启后保留。"
+        "换好后可以用那只宝可梦的口吻简短打个招呼。",
+        PropertyList({Property("character", kPropertyTypeString, std::string("stackchan"))}),
+        [](const PropertyList& properties) -> ReturnValue {
+            auto character = properties["character"].value<std::string>();
+            std::transform(character.begin(), character.end(), character.begin(), ::tolower);
+            mclog::tagInfo(_tag, "set_character: {}", character);
+            if (!avatar_character::set(character)) {
+                std::string names;
+                for (auto& name : avatar_character::names()) {
+                    names += (names.empty() ? "" : ", ") + name;
+                }
+                return "没有这个形象，可选：" + names;
+            }
+            return "已换成 " + character;
+        });
+
+    mcp_server.AddTool(
+        "self.robot.show_expression",
+        "让屏幕上的脸做一个表情并保持几秒：neutral（平静）、happy（开心）、angry（生气）、sad（难过）、"
+        "doubt（疑惑）、sleepy（困）、cool（酷/得意）。用户让你“生个气”“做个酷的表情”“装酷”“难过一下”等时，"
+        "或者你想强调情绪时调用，然后再说话。不同形象有专属效果：小火龙生气时尾巴火焰烧旺，"
+        "皮卡丘生气时脸颊放电，杰尼龟 cool 时戴墨镜。seconds 默认 8。",
+        PropertyList({Property("expression", kPropertyTypeString, std::string("happy")),
+                      Property("seconds", kPropertyTypeInteger, 8, 1, 30)}),
+        [](const PropertyList& properties) -> ReturnValue {
+            auto expression = properties["expression"].value<std::string>();
+            int seconds     = properties["seconds"].value<int>();
+            std::transform(expression.begin(), expression.end(), expression.begin(), ::tolower);
+            mclog::tagInfo(_tag, "show_expression: {} {}s", expression, seconds);
+            if (!avatar_character::show_expression(expression, seconds)) {
+                return "没有这个表情，可选：neutral, happy, angry, sad, doubt, sleepy, cool";
+            }
+            return "表情已显示";
+        });
+
+    mcp_server.AddTool("self.robot.get_character", "查询机器人当前的脸（互动形象）和可选的形象。", PropertyList(),
+                       [](const PropertyList& properties) -> ReturnValue {
+                           std::string names;
+                           for (auto& name : avatar_character::names()) {
+                               names += (names.empty() ? "" : ", ") + name;
+                           }
+                           return "当前：" + avatar_character::current() + "；可选：" + names;
+                       });
 
     mclog::tagInfo(_tag, "add robot.create_reminder tool");
     mcp_server.AddTool("self.robot.create_reminder",

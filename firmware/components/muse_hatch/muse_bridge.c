@@ -93,6 +93,13 @@ static void print_result(bool brief)
     free(text);
 }
 
+static muse_bridge_command_cb_t s_command_cb;
+
+void muse_bridge_set_command_cb(muse_bridge_command_cb_t cb)
+{
+    s_command_cb = cb;
+}
+
 static void command(char *line, bool whole)
 {
     if (!strcmp(line, "status")) {
@@ -124,6 +131,8 @@ static void command(char *line, bool whole)
         fflush(stdout);
     } else if (!strcmp(line, "brief") || !strcmp(line, "answer")) {
         print_result(!strcmp(line, "brief"));
+    } else if (s_command_cb && s_command_cb(line)) {
+        /* handled by the app */
     } else {
         printf("@error unknown command\n");
         fflush(stdout);

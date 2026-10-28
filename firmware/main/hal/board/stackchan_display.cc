@@ -17,11 +17,23 @@
 #include <stackchan/stackchan.h>
 #include <assets/lang_config.h>
 #include <hal/hal.h>
+#include <stackchan/avatar/skins/pokemon/pokemon.h>
+#include "avatar_character.h"
+#include <application.h>
+#include <muse_bridge.h>
+#include <esp_heap_caps.h>
+#include <algorithm>
 
 using namespace stackchan;
 using namespace stackchan::avatar;
 
 #define TAG "StackChanAvatarDisplay"
+
+static StackChanAvatarDisplay* s_display = nullptr;
+static const char* kDefaultCharacter     = "stackchan";
+static bool on_console_command(const char* line);
+static int64_t s_expression_until_us        = 0;
+static esp_timer_handle_t s_expression_timer = nullptr;
 
 LV_FONT_DECLARE(BUILTIN_TEXT_FONT);
 LV_FONT_DECLARE(BUILTIN_ICON_FONT);
@@ -251,22 +263,9 @@ void StackChanAvatarDisplay::SetupUI()
 
     ESP_LOGI(TAG, "Creating Stack-chan Avatar...");
 
-    auto avatar = std::make_unique<DefaultAvatar>();
-    avatar->init(lv_screen_active());
-    avatar->getPanel()->onClick().connect([]() {
-        static uint32_t last_toggle_tick = 0;
-        const uint32_t now               = GetHAL().millis();
-        if (last_toggle_tick != 0 && now - last_toggle_tick < 2000) {
-            return;
-        }
-
-        if (hal_bridge::is_xiaozhi_ready()) {
-            last_toggle_tick = now;
-            hal_bridge::toggle_xiaozhi_chat_state();
-        }
-    });
-
-    stackchan.attachAvatar(std::move(avatar));
+    s_display = this;
+    stackchan.attachAvatar(CreateAvatar(avatar_character::current(), nullptr, &avatar_panel_));
+    muse_bridge_set_command_cb(on_console_command);
     stackchan.addModifier(std::make_unique<BreathModifier>());
     blink_modifier_id_ = stackchan.addModifier(std::make_unique<BlinkModifier>());
     stackchan.addModifier(std::make_unique<HeadPetModifier>());
@@ -283,6 +282,230 @@ void StackChanAvatarDisplay::SetupUI()
     idle_motion_level_ = config.idleRandomMovementLevel;
 
     ESP_LOGI(TAG, "Avatar created and started");
+}
+
+static void on_avatar_click()
+{
+    static uint32_t last_toggle_tick = 0;
+    const uint32_t now               = GetHAL().millis();
+    if (last_toggle_tick != 0 && now - last_toggle_tick < 2000) {
+        return;
+    }
+
+    if (hal_bridge::is_xiaozhi_ready()) {
+        last_toggle_tick = now;
+        hal_bridge::toggle_xiaozhi_chat_state();
+    }
+}
+
+std::unique_ptr<Avatar> StackChanAvatarDisplay::CreateAvatar(const std::string& character, lv_obj_t** panel,
+                                                             lv_obj_t** created_panel)
+{
+    lv_obj_t* local_panel = nullptr;
+    if (!created_panel) {
+        created_panel = &local_panel;
+    }
+    if (character != kDefaultCharacter) {
+        auto images = PokemonImages::load(character);
+        if (images) {
+            auto avatar = std::make_unique<PokemonAvatar>();
+            avatar->init(lv_screen_active(), images);
+            avatar->getPanel()->onClick().connect(on_avatar_click);
+            if (panel) {
+                *panel = avatar->getPanel()->get();
+            }
+            *created_panel = avatar->getPanel()->get();
+            return avatar;
+        }
+        ESP_LOGW(TAG, "No skin for character %s", character.c_str());
+        if (panel) {
+            return nullptr;  // switching: keep the current face
+        }
+    }
+
+    auto avatar = std::make_unique<DefaultAvatar>();
+    avatar->init(lv_screen_active());
+    avatar->getPanel()->onClick().connect(on_avatar_click);
+    if (panel) {
+        *panel = avatar->getPanel()->get();
+    }
+    *created_panel = avatar->getPanel()->get();
+    return avatar;
+}
+
+bool StackChanAvatarDisplay::SetCharacter(const std::string& character)
+{
+    auto& stackchan = GetStackChan();
+    if (!stackchan.hasAvatar()) {
+        return false;
+    }
+
+    DisplayLockGuard lock(this);
+
+    auto emotion     = stackchan.avatar().getEmotion();
+    lv_obj_t* panel  = nullptr;
+    auto avatar      = CreateAvatar(character, &panel);
+    if (!avatar) {
+        return false;
+    }
+    // Same layer as the old face: above the boot screen, below the preview image and overlays
+    if (avatar_panel_ && lv_obj_is_valid(avatar_panel_)) {
+        lv_obj_move_to_index(panel, lv_obj_get_index(avatar_panel_));
+    }
+    stackchan.attachAvatar(std::move(avatar));
+    avatar_panel_ = panel;
+    stackchan.avatar().setEmotion(emotion);
+
+    auto blink_modifier = static_cast<BlinkModifier*>(stackchan.getModifier(blink_modifier_id_));
+    if (blink_modifier) {
+        blink_modifier->resyncEyeWeights();
+    }
+    ESP_LOGI(TAG, "Character: %s", character.c_str());
+    return true;
+}
+
+std::string avatar_character::current()
+{
+    Settings settings("avatar", false);
+    return settings.GetString("character", kDefaultCharacter);
+}
+
+std::vector<std::string> avatar_character::names()
+{
+    std::vector<std::string> names = {kDefaultCharacter};
+    for (auto& name : PokemonImages::characters()) {
+        names.push_back(name);
+    }
+    return names;
+}
+
+bool avatar_character::show_expression(const std::string& expression, int seconds)
+{
+    static const char* const names[] = {"neutral", "happy", "angry", "sad", "doubt", "sleepy", "cool"};
+    int index                        = -1;
+    for (int i = 0; i < 7; i++) {
+        if (expression == names[i]) {
+            index = i;
+        }
+    }
+    auto& stackchan = GetStackChan();
+    if (index < 0 || !stackchan.hasAvatar()) {
+        return false;
+    }
+
+    if (!s_expression_timer) {
+        esp_timer_create_args_t args = {};
+        args.name                    = "expression";
+        args.callback                = [](void*) {
+            s_expression_until_us = 0;
+            LvglLockGuard lock;
+            if (GetStackChan().hasAvatar()) {
+                GetStackChan().avatar().setEmotion(Emotion::Neutral);
+            }
+        };
+        esp_timer_create(&args, &s_expression_timer);
+    }
+    esp_timer_stop(s_expression_timer);
+
+    seconds               = std::clamp(seconds, 1, 30);
+    s_expression_until_us = esp_timer_get_time() + seconds * 1000000LL;
+    {
+        LvglLockGuard lock;
+        stackchan.avatar().setEmotion((Emotion)index);
+    }
+    esp_timer_start_once(s_expression_timer, seconds * 1000000ULL);
+    ESP_LOGI(TAG, "Expression %s for %d s", expression.c_str(), seconds);
+    return true;
+}
+
+bool avatar_character::set(const std::string& name)
+{
+    if (name != kDefaultCharacter && !PokemonImages::exists(name)) {
+        return false;
+    }
+    if (!s_display || !s_display->SetCharacter(name)) {
+        return false;
+    }
+    Settings settings("avatar", true);
+    settings.SetString("character", name);
+    return true;
+}
+
+static void print_memory(const char* when)
+{
+    ESP_LOGI(TAG, "mem %s: internal %u (largest %u), psram %u (largest %u)", when,
+             (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL),
+             (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL),
+             (unsigned)heap_caps_get_free_size(MALLOC_CAP_SPIRAM),
+             (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_SPIRAM));
+}
+
+// Prints what LVGL renders, as "@snap W H" then hex lines of RGB565 (little endian), then "@snap end"
+static void print_snapshot()
+{
+    lv_draw_buf_t* snap = nullptr;
+    {
+        LvglLockGuard lock;
+        snap = lv_snapshot_take(lv_screen_active(), LV_COLOR_FORMAT_RGB565);
+    }
+    if (!snap) {
+        printf("@snap error\n");
+        return;
+    }
+    int w = snap->header.w, h = snap->header.h, stride = snap->header.stride;
+    printf("@snap %d %d\n", w, h);
+    static const char hex[] = "0123456789abcdef";
+    char line[2 * 160 + 2];
+    for (int y = 0; y < h; y++) {
+        const uint8_t* row = snap->data + y * stride;
+        for (int off = 0; off < w * 2; off += 160) {
+            int n = std::min(160, w * 2 - off);
+            for (int i = 0; i < n; i++) {
+                line[2 * i]     = hex[row[off + i] >> 4];
+                line[2 * i + 1] = hex[row[off + i] & 15];
+            }
+            line[2 * n]     = '\n';
+            line[2 * n + 1] = 0;
+            fputs(line, stdout);
+        }
+        vTaskDelay(1);
+    }
+    printf("@snap end\n");
+    fflush(stdout);
+    lv_draw_buf_destroy(snap);
+}
+
+// Debug console commands: ">face=NAME", ">snap", ">mem"
+static bool on_console_command(const char* line)
+{
+    std::string cmd(line);
+    if (cmd.rfind("face=", 0) == 0) {
+        auto name = cmd.substr(5);
+        Application::GetInstance().Schedule([name]() {
+            print_memory("before");
+            bool ok = avatar_character::set(name);
+            print_memory("after");
+            printf("@face %s %s\n", name.c_str(), ok ? "ok" : "error");
+            fflush(stdout);
+        });
+        return true;
+    }
+    if (cmd.rfind("expr=", 0) == 0) {
+        bool ok = avatar_character::show_expression(cmd.substr(5), 20);
+        printf("@expr %s\n", ok ? "ok" : "error");
+        fflush(stdout);
+        return true;
+    }
+    if (cmd == "snap") {
+        Application::GetInstance().Schedule([]() { print_snapshot(); });
+        return true;
+    }
+    if (cmd == "mem") {
+        print_memory("now");
+        PokemonImages::debugCheck();
+        return true;
+    }
+    return false;
 }
 
 void StackChanAvatarDisplay::LvglLock()
@@ -328,7 +551,11 @@ void StackChanAvatarDisplay::SetEmotion(const char* emotion)
 
     DisplayLockGuard lock(this);
 
-    // ESP_LOGE(TAG, "SetEmotion: %s", emotion);
+    if (esp_timer_get_time() < s_expression_until_us) {
+        ESP_LOGI(TAG, "SetEmotion: %s (holding an expression)", emotion);
+        return;
+    }
+    ESP_LOGI(TAG, "SetEmotion: %s", emotion);
 
     auto& avatar = stackchan.avatar();
 
@@ -364,6 +591,18 @@ void StackChanAvatarDisplay::SetEmotion(const char* emotion)
         auto& motion = GetStackChan().motion();
         motion.pitchServo().moveWithSpeed(0, 80);
 
+    } else if (strcmp(emotion, "funny") == 0 || strcmp(emotion, "loving") == 0 ||
+               strcmp(emotion, "relaxed") == 0 || strcmp(emotion, "delicious") == 0 ||
+               strcmp(emotion, "kissy") == 0 || strcmp(emotion, "silly") == 0) {
+        avatar.setEmotion(Emotion::Happy);
+    } else if (strcmp(emotion, "surprised") == 0 || strcmp(emotion, "shocked") == 0 ||
+               strcmp(emotion, "thinking") == 0 || strcmp(emotion, "confused") == 0) {
+        avatar.setEmotion(Emotion::Doubt);
+    } else if (strcmp(emotion, "embarrassed") == 0) {
+        avatar.setEmotion(Emotion::Sad);
+    } else if (strcmp(emotion, "cool") == 0 || strcmp(emotion, "confident") == 0 ||
+               strcmp(emotion, "winking") == 0) {
+        avatar.setEmotion(Emotion::Cool);
     } else if (strcmp(emotion, "doubtful") == 0) {
         avatar.setEmotion(Emotion::Doubt);
     } else {

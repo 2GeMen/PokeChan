@@ -9,6 +9,8 @@
 #include <esp_lcd_panel_ops.h>
 #include <esp_timer.h>
 #include <memory>
+#include <string>
+#include <stackchan/avatar/avatar.h>
 
 class StackChanAvatarDisplay : public LvglDisplay {
 private:
@@ -22,10 +24,14 @@ private:
     uint8_t idle_motion_level_          = 2;
 
     lv_obj_t* preview_image_                         = nullptr;
+    lv_obj_t* avatar_panel_                          = nullptr;  // the current face's panel
     esp_timer_handle_t preview_timer_                = nullptr;
     std::unique_ptr<LvglImage> preview_image_cached_ = nullptr;
 
     void CreateIdleMotionModifier();
+    // panel: when set, gets the new face's panel, and an unknown skin returns null instead of the default face
+    std::unique_ptr<stackchan::avatar::Avatar> CreateAvatar(const std::string& character, lv_obj_t** panel = nullptr,
+                                                            lv_obj_t** created_panel = nullptr);
 
 protected:
     virtual bool Lock(int timeout_ms = 0) override;
@@ -52,4 +58,7 @@ public:
     void LvglLock();
     void LvglUnlock();
     lv_disp_t* GetLvglDisplay();
+
+    // Swaps the face for character ("stackchan" or a Pokémon skin) and keeps the emotion
+    bool SetCharacter(const std::string& character);
 };

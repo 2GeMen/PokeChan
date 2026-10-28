@@ -101,6 +101,7 @@ void DefaultEyes::setEmotion(const Emotion& emotion)
 
     switch (emotion) {
         case Emotion::Neutral:
+        case Emotion::Cool:
             apply_style(100, 0);
             break;
         case Emotion::Happy:

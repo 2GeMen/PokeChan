@@ -16,6 +16,9 @@ namespace stackchan::avatar {
  */
 class Avatar {
 public:
+    // Virtual so a skin's own LVGL objects are freed when the avatar is reset or replaced
+    virtual ~Avatar() = default;
+
     /**
      * @brief Update avatar, trigger all elements, decorators and modifiers to update
      *

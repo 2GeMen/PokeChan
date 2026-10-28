@@ -48,6 +48,11 @@ int muse_bridge_brief(char *out, size_t cap);
 int muse_bridge_last_answer(char *question, size_t qcap, char *answer, size_t acap);
 void muse_bridge_set_answer_cb(muse_bridge_answer_cb_t cb);
 
+/* Handles console commands the bridge doesn't know (">name..."): return true if handled.
+ * Called on the console task. */
+typedef bool (*muse_bridge_command_cb_t)(const char *line);
+void muse_bridge_set_command_cb(muse_bridge_command_cb_t cb);
+
 #ifdef __cplusplus
 }
 #endif
