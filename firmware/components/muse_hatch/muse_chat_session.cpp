@@ -2055,7 +2055,8 @@ static void hatch_task(void *arg)
                       : !s_connected ? (s_resting ? -1 : 200)
                       : s_turn.phase != P_IDLE ? 2
                       : s_resting ? 500 : 20;
-        TickType_t wait = wait_ms < 0 ? portMAX_DELAY : pdMS_TO_TICKS(wait_ms);
+        /* StackChan bridge: at StackChan's 100 Hz tick, 2 ms is 0 ticks and this loop spun; wait a tick at least. */
+        TickType_t wait = wait_ms < 0 ? portMAX_DELAY : pdMS_TO_TICKS(wait_ms) ? pdMS_TO_TICKS(wait_ms) : 1;
         if (xQueueReceive(s_cmds, &cmd, wait) == pdTRUE) {
             handle(cmd);
             while (xQueueReceive(s_cmds, &cmd, 0) == pdTRUE) {
@@ -2179,9 +2180,10 @@ extern "C" void muse_hatch_start(void)
 #if CONFIG_MUSE_REALTIME_VOICE
     muse_voice_call_init();   /* calls stay unavailable if it fails; notes still work */
 #endif
-    /* Stack in PSRAM: TLS, Noise and the MP3 decoder (~16 KB of scratch) all run here. */
+    /* Stack in PSRAM: TLS, Noise and the MP3 decoder (~16 KB of scratch) all run here.
+     * StackChan bridge: priority 2 (was 5), below xiaozhi's wake word task (3). */
     if (!s_cmds || !s_events || !s_in || !s_out || !s_turn.chunk || !s_turn.mp3 || (VOICE_NOTE && !s_turn.note) || !s_pcm || !s_pcm16 ||
-        xTaskCreatePinnedToCoreWithCaps(hatch_task, "muse_chat", 48 * 1024, nullptr, 5, nullptr, 0,
+        xTaskCreatePinnedToCoreWithCaps(hatch_task, "muse_chat", 48 * 1024, nullptr, 2, nullptr, 0,
                                         MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT) != pdPASS) {
         ESP_LOGE(TAG, "start failed");
     }

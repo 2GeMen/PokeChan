@@ -35,7 +35,7 @@ static const char *TAG = "muse_ask";
 #define TURN_TIMEOUT_MS (6 * 60 * 1000)         /* the session gives up after 5 min */
 #define BRIEF_EVERY_US (60 * 60 * 1000000LL)
 #define BRIEF_RETRY_US (5 * 60 * 1000000LL)
-#define BRIEF_FIRST_US (45 * 1000000LL)         /* after boot: let Wi-Fi and xiaozhi settle */
+#define BRIEF_FIRST_US (30 * 1000000LL)         /* after boot: just after Muse may connect (25 s) */
 
 #define BRIEF_PROMPT                                                                         \
     "请用简短自然的中文口语，总结我今天和明天日历上的安排，再提一下过去一天里需要我注意的" \
