@@ -265,6 +265,18 @@ void Hal::xiaozhi_mcp_init()
             return "表情已显示";
         });
 
+    mcp_server.AddTool(
+        "self.robot.set_head_gestures",
+        "打开或关闭“情绪带动头部动作”：开心时点头、生气时甩头瞪眼、耍酷时抬下巴侧脸、思考时抬头看技能徽章。"
+        "用户说“别乱动了”“安静点别晃头”时关闭，说“可以动了”“打开头部动作”时打开。设置会保存。",
+        PropertyList({Property("enabled", kPropertyTypeBoolean, true)}),
+        [](const PropertyList& properties) -> ReturnValue {
+            bool enabled = properties["enabled"].value<bool>();
+            mclog::tagInfo(_tag, "set_head_gestures: {}", enabled);
+            avatar_character::set_head_gestures(enabled);
+            return enabled ? "头部动作已打开" : "头部动作已关闭";
+        });
+
     mcp_server.AddTool("self.robot.get_character", "查询机器人当前的脸（互动形象）和可选的形象。", PropertyList(),
                        [](const PropertyList& properties) -> ReturnValue {
                            std::string names;

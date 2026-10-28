@@ -17,4 +17,9 @@ bool set(const std::string& name);
 // emotions the chat sends meanwhile; false for an unknown expression
 bool show_expression(const std::string& expression, int seconds);
 
+// Head gestures that follow the face's emotion (nod when happy, shake when angry, ...). Saved in NVS
+// ("avatar"/"gestures"), on by default.
+bool head_gestures();
+void set_head_gestures(bool enabled);
+
 }  // namespace avatar_character

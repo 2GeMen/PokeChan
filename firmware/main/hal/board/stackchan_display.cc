@@ -34,6 +34,12 @@ static const char* kDefaultCharacter     = "stackchan";
 static bool on_console_command(const char* line);
 static int64_t s_expression_until_us        = 0;
 static esp_timer_handle_t s_expression_timer = nullptr;
+static int s_emotion_motion_id               = -1;  // EmotionMotionModifier: head gestures for emotions
+
+static EmotionMotionModifier* emotion_motion()
+{
+    return static_cast<EmotionMotionModifier*>(GetStackChan().getModifier(s_emotion_motion_id));
+}
 
 LV_FONT_DECLARE(BUILTIN_TEXT_FONT);
 LV_FONT_DECLARE(BUILTIN_ICON_FONT);
@@ -270,6 +276,8 @@ void StackChanAvatarDisplay::SetupUI()
     blink_modifier_id_ = stackchan.addModifier(std::make_unique<BlinkModifier>());
     stackchan.addModifier(std::make_unique<HeadPetModifier>());
     stackchan.addModifier(std::make_unique<ImuEventModifier>());
+    EmotionMotionModifier::setEnabled(avatar_character::head_gestures());
+    s_emotion_motion_id = stackchan.addModifier(std::make_unique<EmotionMotionModifier>());
 
     preview_image_ = lv_image_create(lv_screen_active());
     lv_obj_set_size(preview_image_, 320, 240);
@@ -360,6 +368,9 @@ bool StackChanAvatarDisplay::SetCharacter(const std::string& character)
     if (blink_modifier) {
         blink_modifier->resyncEyeWeights();
     }
+    if (auto gestures = emotion_motion()) {
+        gestures->nod();
+    }
     ESP_LOGI(TAG, "Character: %s", character.c_str());
     return true;
 }
@@ -368,6 +379,20 @@ std::string avatar_character::current()
 {
     Settings settings("avatar", false);
     return settings.GetString("character", kDefaultCharacter);
+}
+
+bool avatar_character::head_gestures()
+{
+    Settings settings("avatar", false);
+    return settings.GetBool("gestures", true);
+}
+
+void avatar_character::set_head_gestures(bool enabled)
+{
+    Settings settings("avatar", true);
+    settings.SetBool("gestures", enabled);
+    EmotionMotionModifier::setEnabled(enabled);
+    ESP_LOGI(TAG, "Head gestures %s", enabled ? "on" : "off");
 }
 
 std::vector<std::string> avatar_character::names()
@@ -605,7 +630,8 @@ static void print_snapshot()
     lv_draw_buf_destroy(snap);
 }
 
-// Debug console commands: ">face=NAME", ">snap", ">mem"
+// Debug console commands: ">face=NAME", ">say=TEXT", ">expr=NAME", ">move=NAME", ">head", ">gestures=on|off",
+// ">snap", ">mem"
 static bool on_console_command(const char* line)
 {
     std::string cmd(line);
@@ -635,6 +661,34 @@ static bool on_console_command(const char* line)
     if (cmd.rfind("expr=", 0) == 0) {
         bool ok = avatar_character::show_expression(cmd.substr(5), 20);
         printf("@expr %s\n", ok ? "ok" : "error");
+        fflush(stdout);
+        return true;
+    }
+    // ">move=NAME" plays a head gesture now: neutral, happy, angry, sad, doubt, sleepy, cool, nod
+    if (cmd.rfind("move=", 0) == 0) {
+        auto name = cmd.substr(5);
+        LvglLockGuard lock;
+        auto gestures = emotion_motion();
+        if (gestures) {
+            gestures->test(name.c_str());
+        }
+        printf("@move %s %s\n", name.c_str(), gestures ? "ok" : "error");
+        fflush(stdout);
+        return true;
+    }
+    // ">head" prints the servo angles (0.1 degree)
+    if (cmd == "head") {
+        LvglLockGuard lock;
+        auto angles = GetStackChan().motion().getCurrentAngles();
+        printf("@head %d %d\n", angles.x, angles.y);
+        fflush(stdout);
+        return true;
+    }
+    // ">gestures=on" / ">gestures=off"
+    if (cmd.rfind("gestures=", 0) == 0) {
+        bool on = cmd.substr(9) == "on";
+        avatar_character::set_head_gestures(on);
+        printf("@gestures %s\n", on ? "on" : "off");
         fflush(stdout);
         return true;
     }
@@ -937,6 +991,7 @@ void StackChanAvatarDisplay::SetStatus(const char* status)
         }
 
         _is_xiaozhi_idle = true;
+        EmotionMotionModifier::setInConversation(false);
     } else {
         // Stop idle motion
         ESP_LOGW(TAG, "Stop idle motion");
@@ -954,6 +1009,7 @@ void StackChanAvatarDisplay::SetStatus(const char* status)
         // }
 
         _is_xiaozhi_idle = false;
+        EmotionMotionModifier::setInConversation(true);
     }
 
     // Clear sleep state

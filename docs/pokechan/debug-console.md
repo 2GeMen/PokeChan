@@ -23,6 +23,9 @@ PokeChan 复用 StackChan 的 USB 串口（USB-Serial-JTAG，115200）。在串�
 | --- | --- |
 | `>face=pikachu` | 换脸，作用和语音换脸一样，选择会保存。前后会各打印一行内存日志 |
 | `>expr=angry` | 做一个表情并保持 20 秒 |
+| `>move=angry` | 只播放头部动作，不改表情。可选：neutral、happy、angry、sad、doubt、sleepy、cool、nod |
+| `>head` | 打印当前舵机角度（`@head 左右 俯仰`，单位 0.1°） |
+| `>gestures=off` / `>gestures=on` | 关闭或打开情绪带动的头部动作，设置会保存 |
 | `>say=% weather_forecast...` | 模拟一条助手消息。以 `% ` 开头的会模拟一次工具调用（弹出技能图标）；普通文字会结束技能状态 |
 | `>snap` | 把 LVGL 当前渲染的画面以十六进制 RGB565 输出（`@snap W H` …… `@snap end`），用来在电脑上还原截图 |
 | `>mem` | 打印内部 RAM 和 PSRAM 的剩余量，以及最近一次加载的背景图的校验值 |

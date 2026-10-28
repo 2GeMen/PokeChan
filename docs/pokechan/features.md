@@ -36,27 +36,46 @@
 - `self.robot.show_expression`：让模型主动做一个表情并保持几秒。
 - 新增"酷 / 得意"情绪（`Emotion::Cool`），也补上了 funny、surprised、thinking 等之前没有对应表情的情绪。
 
-### 4. 技能图标
+### 4. 情绪带动头部动作
+
+表情变化时，头部舵机会跟着做一个小动作，幅度在 5° 到 16° 之间：
+
+| 情绪 | 头部动作 |
+| --- | --- |
+| 开心 | 点两下头（服务器几乎每句都发开心，所以只按概率触发，且至少间隔 6 秒） |
+| 生气 | 左右甩头，然后低头"瞪人"，保持到情绪结束 |
+| 酷 | 抬下巴、侧过脸，保持 |
+| 难过、困 | 慢慢低头，保持 |
+| 思考（技能进行中） | 抬头看向右上角的技能图标，回答开始时回正 |
+| 平静 | 回到动作前的位置 |
+| 换脸 | 点一下头 |
+
+- 实现方式：`EmotionMotionModifier`（`firmware/main/stackchan/modifiers/emotion_motion.h`）每帧检查脸上的表情，一变化就播放对应的关键帧。所以服务器下发的情绪、`show_expression`、技能思考，都不用额外接线。
+- 只在对话中生效，空闲时头部仍然交给原来的随机张望。机器人被抱起、被摸头，或者有别的动作正在进行时，会自动让出。
+- 动作播放的一两秒内，对话期间主循环的额外 100ms 延迟会取消，让舵机动作更平滑。
+- 可以用语音关掉：说"别乱动了"，模型会调用 `self.robot.set_head_gestures`。设置保存在 NVS（`avatar`/`gestures`）里，默认打开。
+
+### 5. 技能图标
 
 - 取消了嘴边的文字气泡：原来的字体没有中文字形，中文回复显示成空白。现在说话时只动嘴。激活码这类系统消息仍然用气泡显示。
 - 调用工具时，脸切成思考表情，右上角弹出技能图标，开始回答后收起。图标有 7 种：天气、新闻、搜索、Muse、提醒、拍照，以及其他工具共用的星星。
 
-### 5. Muse 桥
+### 6. Muse 桥
 
 - 把 Muse Gadget SDK 的会话代码移植到 ESP-IDF 5.5，和小智运行在同一颗芯片上。
 - 3 个 MCP 工具：简报（缓存）、提问（异步，在同一轮对话里念出答案）、取迟到的答案。
 - 串口控制台兼容 SDK 的 `chat.py`。详见 [muse.md](muse.md)。
 
-### 6. 异步 MCP 工具（xiaozhi-esp32 补丁）
+### 7. 异步 MCP 工具（xiaozhi-esp32 补丁）
 
 - 给 `McpServer` 加了 `AddAsyncTool`：工具回调立即返回，结果准备好后再回复给服务器，不会卡住设备主线程。`self.muse.ask` 就是用这个实现的。
 - 这部分改动包含在 `firmware/patches/xiaozhi-esp32.patch` 里。
 
-### 7. Mac 端 MCP 服务
+### 8. Mac 端 MCP 服务
 
 免费的天气、网页搜索、新闻搜索，以 launchd 服务的形式开机自启。详见 [mcp-server.md](mcp-server.md)。
 
-### 8. 修复与改进
+### 9. 修复与改进
 
 | 问题 | 处理 |
 | --- | --- |
@@ -75,7 +94,8 @@
 | 技能图标 | 同上（`icon/*`） | 7 个，96×96 像素，带思考泡泡的小尾巴 |
 | 素材生成器 | `firmware/tools/pokemon_faces/gen_faces.py` | 用 Pillow 程序化绘制，4 倍超采样 |
 | 皮肤代码 | `firmware/main/stackchan/avatar/skins/pokemon/pokemon.{h,cpp}` | `PokemonImages`（PSRAM 解码与图标缓存）、`PokemonAvatar`、`PokemonEye`、`PokemonMouth` |
-| 角色与表情 API | `firmware/main/hal/board/avatar_character.h` | `set`、`current`、`names`、`show_expression` |
+| 角色与表情 API | `firmware/main/hal/board/avatar_character.h` | `set`、`current`、`names`、`show_expression`、`head_gestures`、`set_head_gestures` |
+| 头部动作 | `firmware/main/stackchan/modifiers/emotion_motion.h` | `EmotionMotionModifier`：表情变化时播放头部关键帧 |
 | Muse 桥 | `firmware/components/muse_hatch/` | 详见 [muse.md](muse.md) |
 | Muse 令牌工具 | `firmware/tools/muse/muse_token.py` | `read` / `send` 两个子命令 |
 | MCP 服务 | `mcp-server/` | `server.py`、`mcp_pipe.py`、`install.sh`、launchd 模板 |

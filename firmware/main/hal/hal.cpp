@@ -153,7 +153,8 @@ static void _stackchan_update_task(void* param)
 
         LvglLockGuard lock;
 
-        if (!hal_bridge::is_xiaozhi_idle()) {
+        // Slower during a conversation, except while a head gesture plays (it needs smooth servo updates)
+        if (!hal_bridge::is_xiaozhi_idle() && GetHAL().millis() >= stackchan::EmotionMotionModifier::busy_until_ms) {
             vTaskDelay(pdMS_TO_TICKS(100));
         }
 

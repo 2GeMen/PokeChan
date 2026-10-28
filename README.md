@@ -9,6 +9,8 @@ desktop robot. It keeps everything StackChan does and adds:
   ("switch to Pikachu"), with all the original animation: blinking, talking, breathing and idle glances.
 - **Signature moves**: Charmander's tail flame flares up when it's angry, Pikachu's cheeks spark, and
   Squirtle puts on sunglasses when it's being cool.
+- **Head gestures**: the head moves with the mood — a nod when happy, a shake and a glare when angry,
+  chin up when cool, a look up at the badge while thinking. Say "stop moving" to turn it off.
 - **Skill badges**: while a tool runs, the face looks thoughtful and a badge pops up (weather, news,
   search, Muse, reminder, camera), like a Pokémon using a move. The text speech bubble is gone; the
   mouth just talks.

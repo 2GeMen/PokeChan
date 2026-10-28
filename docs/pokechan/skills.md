@@ -15,6 +15,7 @@ StackChan 没有固定的唤醒关键词：说 "Hi Stack-chan" 唤醒之后，�
 | 换脸 | `self.robot.set_character` | 设备（PokeChan） | "换成皮卡丘""变成小火龙""换回原来的脸" | （无） |
 | 查当前的脸 | `self.robot.get_character` | 设备（PokeChan） | "你现在是谁？" | （无） |
 | 做表情 | `self.robot.show_expression` | 设备（PokeChan） | "生个气给我看看""做个酷的表情""装酷" | （无） |
+| 头部动作开关 | `self.robot.set_head_gestures` | 设备（PokeChan） | "别乱动了""可以动了" | （无） |
 | 提醒 | `self.robot.create_reminder` / `get_reminders` / `stop_reminder` | 设备（StackChan） | "10 分钟后提醒我关火" | 提醒 |
 | 转头 | `self.robot.set_head_angles` / `get_head_angles` | 设备（StackChan） | "往左看""抬头" | （无） |
 | 灯光 | `self.robot.set_led_color` | 设备（StackChan） | "把灯调成蓝色" | （无） |
