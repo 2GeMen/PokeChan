@@ -10,19 +10,56 @@
 #include <apps/common/common.h>
 #include <assets/assets.h>
 #include <muse_bridge.h>
+#include <esp_timer.h>
+#include <algorithm>
+#include <mutex>
 #include "board/hal_bridge.h"
 
 using namespace stackchan;
 
 static const std::string_view _tag = "HAL-MCP";
 
-// Muse answers well after the tool call that asked has returned, so when one
-// comes it chimes; the user then asks for it (self.muse.get_answer). The
-// xiaozhi.me server ignores text sent as a wake word, so the device can't
+// self.muse.ask is an async tool: its tools/call waits (off the main task) for
+// Muse's answer, so the model reads it out in the same turn. Past
+// _muse_wait_us the call is answered with "still asking" instead, and the
+// answer, when it comes, chimes; the user then asks for it (self.muse.get_answer).
+// The xiaozhi.me server ignores text sent as a wake word, so the device can't
 // start a turn that reads it out by itself.
+static constexpr int64_t _muse_wait_us = 60 * 1000000LL;
+static constexpr size_t _muse_question_max = 511;   // as muse_bridge_ask keeps it
+
+static std::mutex _muse_mutex;
+static McpTool::AsyncReply _muse_reply;   // the tools/call waiting for Muse, if any
+static std::string _muse_question;        // what it asked
+static esp_timer_handle_t _muse_timer;
+
+static McpTool::AsyncReply _take_muse_reply(const char* question)
+{
+    std::lock_guard<std::mutex> lock(_muse_mutex);
+    if (!_muse_reply || (question && _muse_question != question)) {
+        return nullptr;
+    }
+    _muse_question.clear();
+    return std::move(_muse_reply);
+}
+
+static void _on_muse_timeout(void*)
+{
+    if (auto reply = _take_muse_reply(nullptr)) {
+        mclog::tagInfo(_tag, "muse.ask: no answer in {} s", _muse_wait_us / 1000000);
+        reply(std::string("Muse 还在查，已经超过一分钟了。请告诉用户：Muse 回复后我会叮一声，到时候问我“Muse 怎么说”。"));
+    }
+}
+
 static void _on_muse_answer(const char* question, const char* answer)
 {
-    mclog::tagInfo(_tag, "muse answered: {}", question);
+    if (auto reply = _take_muse_reply(question)) {
+        esp_timer_stop(_muse_timer);
+        mclog::tagInfo(_tag, "muse answered in time: {}", question);
+        reply(fmt::format("Muse 的回复：{}", answer));
+        return;
+    }
+    mclog::tagInfo(_tag, "muse answered late: {}", question);
     hal_bridge::app_play_sound(OGG_NEW_NOTIFICATION);
 }
 
@@ -47,30 +84,48 @@ static void _add_muse_tools(McpServer& mcp_server)
             return fmt::format("{}\n（这是 {} 分钟前从 Muse 获取的）", brief, age / 60);
         });
 
+    esp_timer_create_args_t timer_args = {};
+    timer_args.callback = _on_muse_timeout;
+    timer_args.name     = "muse_wait";
+    esp_timer_create(&timer_args, &_muse_timer);
+
     mclog::tagInfo(_tag, "add muse.ask tool");
-    mcp_server.AddTool(
+    mcp_server.AddAsyncTool(
         "self.muse.ask",
-        "把问题转交给用户的个人助理 Muse。Muse 能查看用户的 Gmail、Google 日历和个人记忆。用户说“问问 Muse”、"
-        "“用 Muse 查”，或者问到需要个人信息、邮件或日程细节而 self.muse.get_brief 里没有的问题时调用。"
-        "Muse 需要 10 到 60 秒才能回答，这个工具会立刻返回；调用后告诉用户“我去问问 Muse，"
-        "它回复后我会叮一声，到时候问我‘Muse 怎么说’就行”。",
+        "把问题转交给用户的个人助理 Muse 并等它回答。Muse 能查看用户的 Gmail、Google 日历和个人记忆。用户说“问问 "
+        "Muse”、“用 Muse 查”，或者问到需要个人信息、邮件或日程细节而 self.muse.get_brief 里没有的问题时调用。"
+        "调用前先跟用户说一句“我问问 Muse，稍等一下”。Muse 通常 10 到 30 秒回答，这个工具会等到它回答，"
+        "然后把 Muse 的回复用自然的口语转述给用户。",
         PropertyList({Property("question", kPropertyTypeString, std::string(""))}),
-        [](const PropertyList& properties) -> ReturnValue {
+        [](const PropertyList& properties, McpTool::AsyncReply reply) {
             auto question = properties["question"].value<std::string>();
             mclog::tagInfo(_tag, "muse.ask: {}", question);
             if (question.empty()) {
-                return std::string("没有问题内容");
+                reply(std::string("没有问题内容"));
+                return;
             }
-            if (!muse_bridge_ask(question.c_str())) {
-                return std::string("Muse 现在忙不过来，请稍后再问。");
+            question.resize(std::min(question.size(), _muse_question_max));
+            {
+                std::lock_guard<std::mutex> lock(_muse_mutex);
+                if (_muse_reply) {
+                    reply(std::string("上一个问题还在等 Muse 回答，请稍后再问。"));
+                    return;
+                }
+                if (!muse_bridge_ask(question.c_str())) {
+                    reply(std::string("Muse 现在忙不过来，请稍后再问。"));
+                    return;
+                }
+                _muse_reply    = std::move(reply);
+                _muse_question = question;
             }
-            return std::string("已经转给 Muse 了。它回复后我会叮一声，到时候问我“Muse 怎么说”。");
+            esp_timer_stop(_muse_timer);
+            esp_timer_start_once(_muse_timer, _muse_wait_us);
         });
 
     mclog::tagInfo(_tag, "add muse.get_answer tool");
     mcp_server.AddTool("self.muse.get_answer",
-                       "读取 Muse 对上一个问题的回复。用户问“Muse 怎么说”“Muse 回复了吗”，或收到 Muse "
-                       "回复提示时调用，然后用自然的口语转述回复内容。",
+                       "读取 Muse 对上一个问题的回复。self.muse.ask 超过一分钟没等到、Muse 稍后叮一声提示时用：用户问"
+                       "“Muse 怎么说”“Muse 回复了吗”时调用，然后用自然的口语转述回复内容。",
                        std::vector<Property>{}, [](const PropertyList&) -> ReturnValue {
                            mclog::tagInfo(_tag, "muse.get_answer");
                            std::string question(256, '\0');

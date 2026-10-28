@@ -355,6 +355,87 @@ index 7ee973c..8de99db 100644
  
      /**
       * WiFi connection timeout callback
+diff --git a/main/mcp_server.cc b/main/mcp_server.cc
+index 7cd7ba0..dbd8220 100644
+--- a/main/mcp_server.cc
++++ b/main/mcp_server.cc
+@@ -315,6 +315,12 @@ void McpServer::AddTool(const std::string& name, const std::string& description,
+     AddTool(new McpTool(name, description, properties, callback));
+ }
+ 
++void McpServer::AddAsyncTool(const std::string& name, const std::string& description, const PropertyList& properties, McpTool::AsyncCallback callback) {
++    auto tool = new McpTool(name, description, properties, [](const PropertyList&) -> ReturnValue { return false; });
++    tool->set_async_callback(std::move(callback));
++    AddTool(tool);
++}
++
+ void McpServer::AddUserOnlyTool(const std::string& name, const std::string& description, const PropertyList& properties, std::function<ReturnValue(const PropertyList&)> callback) {
+     auto tool = new McpTool(name, description, properties, callback);
+     tool->set_user_only(true);
+@@ -554,6 +560,13 @@ void McpServer::DoToolCall(int id, const std::string& tool_name, const cJSON* to
+     auto& app = Application::GetInstance();
+     app.Schedule([this, id, tool_iter, arguments = std::move(arguments)]() {
+         try {
++            if ((*tool_iter)->is_async()) {
++                // ReplyResult goes through SendMcpMessage, which is safe from any task.
++                (*tool_iter)->CallAsync(arguments, [this, id](ReturnValue value) {
++                    ReplyResult(id, McpTool::ResultJson(std::move(value)));
++                });
++                return;
++            }
+             ReplyResult(id, (*tool_iter)->Call(arguments));
+         } catch (const std::exception& e) {
+             ESP_LOGE(TAG, "tools/call: %s", e.what());
+diff --git a/main/mcp_server.h b/main/mcp_server.h
+index dacdd55..fab68b2 100644
+--- a/main/mcp_server.h
++++ b/main/mcp_server.h
+@@ -211,6 +211,7 @@ private:
+     std::string description_;
+     PropertyList properties_;
+     std::function<ReturnValue(const PropertyList&)> callback_;
++    std::function<void(const PropertyList&, std::function<void(ReturnValue)>)> async_callback_;
+     bool user_only_ = false;
+ 
+ public:
+@@ -229,6 +230,14 @@ public:
+     inline const PropertyList& properties() const { return properties_; }
+     inline bool user_only() const { return user_only_; }
+ 
++    // A tool whose result comes later: the callback starts the work and calls
++    // `reply` once when it's done, from any task (see McpServer::AddAsyncTool).
++    using AsyncReply = std::function<void(ReturnValue)>;
++    using AsyncCallback = std::function<void(const PropertyList&, AsyncReply)>;
++    void set_async_callback(AsyncCallback callback) { async_callback_ = std::move(callback); }
++    inline bool is_async() const { return static_cast<bool>(async_callback_); }
++    void CallAsync(const PropertyList& properties, AsyncReply reply) { async_callback_(properties, std::move(reply)); }
++
+     std::string to_json() const {
+         std::vector<std::string> required = properties_.GetRequired();
+         
+@@ -270,7 +279,11 @@ public:
+     }
+ 
+     std::string Call(const PropertyList& properties) {
+-        ReturnValue return_value = callback_(properties);
++        return ResultJson(callback_(properties));
++    }
++
++    // The JSON-RPC result for a tool's return value.
++    static std::string ResultJson(ReturnValue return_value) {
+         // 返回结果
+         cJSON* result = cJSON_CreateObject();
+         cJSON* content = cJSON_CreateArray();
+@@ -323,6 +336,9 @@ public:
+     void AddTool(McpTool* tool);
+     void AddTool(const std::string& name, const std::string& description, const PropertyList& properties, std::function<ReturnValue(const PropertyList&)> callback);
+     void AddUserOnlyTool(const std::string& name, const std::string& description, const PropertyList& properties, std::function<ReturnValue(const PropertyList&)> callback);
++    // The callback runs on the main task and must return quickly; it calls `reply`
++    // (once, from any task) when the result is ready, so slow tools don't block xiaozhi.
++    void AddAsyncTool(const std::string& name, const std::string& description, const PropertyList& properties, McpTool::AsyncCallback callback);
+     void ParseMessage(const cJSON* json);
+     void ParseMessage(const std::string& message);
+ 
 diff --git a/main/ota.cc b/main/ota.cc
 index bcc0dc5..e6792e3 100644
 --- a/main/ota.cc
