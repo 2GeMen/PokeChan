@@ -49,6 +49,8 @@ public:
     static std::vector<std::string> characters();
     // Logs the latest loaded background's header and checksum
     static void debugCheck();
+    // A skill badge ("weather", "news", ...), decoded once and kept; null if there is none
+    static const lv_image_dsc_t* icon(const std::string& key);
 
     ~PokemonImages();
 

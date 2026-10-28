@@ -126,6 +126,27 @@ static void* decode(const PokemonAsset* asset, bool alpha, lv_image_dsc_t* dsc)
     return buf;
 }
 
+const lv_image_dsc_t* PokemonImages::icon(const std::string& key)
+{
+    static std::vector<std::pair<std::string, lv_image_dsc_t*>> cache;
+    for (auto& [name, dsc] : cache) {
+        if (name == key) {
+            return dsc;
+        }
+    }
+    auto asset = find_asset("icon", key);
+    if (!asset) {
+        return nullptr;
+    }
+    auto dsc = new lv_image_dsc_t();
+    if (!decode(asset, true, dsc)) {
+        delete dsc;
+        return nullptr;
+    }
+    cache.emplace_back(key, dsc);
+    return dsc;
+}
+
 std::shared_ptr<PokemonImages> PokemonImages::load(const std::string& character)
 {
     if (!exists(character)) {

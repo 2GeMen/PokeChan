@@ -526,6 +526,111 @@ def fx_layers(name):
     return []
 
 
+# --------------------------------------------------------------------------- skill badges
+# Shown over any face while a tool runs: a round badge with the skill's icon and a thought-bubble
+# trail toward the face (the badge sits top right, over the eye that squints when thinking; the
+# trail points down left).
+
+BADGE = 96          # sprite size
+BADGE_C = (56, 40)  # badge center in the sprite; must match show_badge() in stackchan_display.cc
+BADGE_R = 32
+
+
+def badge(ring, draw_icon):
+    img, d = canvas(BADGE, BADGE)
+    cx, cy = BADGE_C
+    # soft shadow, then the badge
+    sh = Image.new("RGBA", img.size, (0, 0, 0, 0))
+    ImageDraw.Draw(sh).ellipse(box(cx + 2, cy + 3, BADGE_R * 2, BADGE_R * 2), fill=(0, 0, 0, 70))
+    img.alpha_composite(sh.filter(ImageFilter.GaussianBlur(2 * S)))
+    for x, y, r in ((22, 70, 7), (10, 84, 4.5)):
+        ellipse(d, x + 1, y + 2, r * 2, r * 2, fill=(0, 0, 0, 50))
+        ellipse(d, x, y, r * 2, r * 2, fill=rgba("#FFFFFF"), outline=rgba(ring), width=2)
+    ellipse(d, cx, cy, BADGE_R * 2, BADGE_R * 2, fill=rgba("#FFFFFF"), outline=rgba(ring), width=4)
+    draw_icon(d, cx, cy)
+    return finish(img)
+
+
+def icon_weather(d, cx, cy):
+    for i in range(8):
+        a = math.radians(i * 45)
+        line(d, [(cx - 7 + 13 * math.cos(a), cy - 7 + 13 * math.sin(a)),
+                 (cx - 7 + 18 * math.cos(a), cy - 7 + 18 * math.sin(a))], rgba("#FFB300"), 3)
+    ellipse(d, cx - 7, cy - 7, 20, 20, fill=rgba("#FFC93C"))
+    cloud = rgba("#9EC9F0")
+    for x, y, r in ((cx - 6, cy + 9, 9), (cx + 5, cy + 4, 11), (cx + 15, cy + 10, 8)):
+        ellipse(d, x, y, r * 2, r * 2, fill=cloud)
+    d.rectangle([(cx - 6) * S, (cy + 9) * S, (cx + 15) * S, (cy + 18) * S], fill=cloud)
+
+
+def icon_news(d, cx, cy):
+    d.rounded_rectangle(box(cx, cy, 38, 32), radius=4 * S, fill=rgba("#F4F1E8"), outline=rgba("#546E7A"), width=2 * S)
+    d.rectangle(box(cx, cy - 10, 30, 5), fill=rgba("#37474F"))
+    d.rectangle(box(cx - 8, cy + 3, 12, 11), fill=rgba("#90A4AE"))
+    for y in (cy - 1, cy + 4, cy + 9):
+        line(d, [(cx + 2, y), (cx + 13, y)], rgba("#78909C"), 2)
+
+
+def icon_search(d, cx, cy):
+    ellipse(d, cx - 4, cy - 4, 26, 26, fill=rgba("#D6ECFF"), outline=rgba("#1E88E5"), width=4)
+    ellipse(d, cx - 9, cy - 9, 7, 7, fill=rgba("#FFFFFF"))
+    line(d, [(cx + 6, cy + 6), (cx + 15, cy + 15)], rgba("#1E88E5"), 6)
+
+
+def icon_muse(d, cx, cy):
+    # a small friendly robot head
+    line(d, [(cx, cy - 13), (cx, cy - 19)], rgba("#7C4DFF"), 2.5)
+    ellipse(d, cx, cy - 20, 7, 7, fill=rgba("#FF6FB5"))
+    d.rounded_rectangle(box(cx, cy + 2, 36, 28), radius=9 * S, fill=rgba("#7C4DFF"))
+    d.rounded_rectangle(box(cx, cy + 2, 28, 18), radius=6 * S, fill=rgba("#1B1340"))
+    ellipse(d, cx - 6, cy, 6, 7, fill=rgba("#7DF9FF"))
+    ellipse(d, cx + 6, cy, 6, 7, fill=rgba("#7DF9FF"))
+    arc(d, cx, cy + 4, 10, 6, 20, 160, rgba("#7DF9FF"), 1.8)
+    for side in (-1, 1):
+        d.rounded_rectangle(box(cx + side * 20, cy + 2, 5, 10), radius=2 * S, fill=rgba("#B39DFF"))
+
+
+def icon_reminder(d, cx, cy):
+    bell = rgba("#FFB300")
+    ellipse(d, cx, cy - 4, 24, 26, fill=bell)
+    d.polygon([((cx - 12) * S, (cy - 2) * S), ((cx + 12) * S, (cy - 2) * S), ((cx + 16) * S, (cy + 10) * S),
+               ((cx - 16) * S, (cy + 10) * S)], fill=bell)
+    ellipse(d, cx, cy + 13, 8, 7, fill=rgba("#E65100"))
+    ellipse(d, cx, cy - 17, 6, 6, fill=bell)
+    ellipse(d, cx - 5, cy - 7, 5, 9, fill=rgba("#FFF3C4"))
+
+
+def icon_camera(d, cx, cy):
+    d.rounded_rectangle(box(cx, cy + 3, 40, 28), radius=6 * S, fill=rgba("#455A64"))
+    d.rounded_rectangle(box(cx - 6, cy - 12, 14, 7), radius=2 * S, fill=rgba("#455A64"))
+    ellipse(d, cx, cy + 4, 20, 20, fill=rgba("#CFD8DC"))
+    ellipse(d, cx, cy + 4, 13, 13, fill=rgba("#263238"))
+    ellipse(d, cx - 3, cy + 1, 4, 4, fill=rgba("#FFFFFF"))
+    ellipse(d, cx + 13, cy - 4, 4, 4, fill=rgba("#FFCA28"))
+
+
+def icon_sparkle(d, cx, cy):
+    def star(x, y, r, col):
+        k = r * 0.28
+        d.polygon([(x * S, (y - r) * S), ((x + k) * S, (y - k) * S), ((x + r) * S, y * S), ((x + k) * S, (y + k) * S),
+                   (x * S, (y + r) * S), ((x - k) * S, (y + k) * S), ((x - r) * S, y * S), ((x - k) * S, (y - k) * S)],
+                  fill=rgba(col))
+    star(cx - 3, cy + 2, 17, "#FFC93C")
+    star(cx + 12, cy - 11, 8, "#FF80AB")
+    star(cx + 11, cy + 13, 5, "#80D8FF")
+
+
+ICONS = {
+    "weather": ("#FFB300", icon_weather),
+    "news": ("#607D8B", icon_news),
+    "search": ("#1E88E5", icon_search),
+    "muse": ("#7C4DFF", icon_muse),
+    "reminder": ("#FF7043", icon_reminder),
+    "camera": ("#455A64", icon_camera),
+    "sparkle": ("#EC407A", icon_sparkle),
+}
+
+
 # --------------------------------------------------------------------------- output
 
 def compose(bg, eyes_l, eyes_r, mouth, fx=(), mood="neutral", frame=0, backdrop="#000000"):
@@ -586,8 +691,19 @@ def main():
             sheet.paste(frame.resize((W // 2, H // 2), Image.LANCZOS), (col * W // 2, row * H // 2))
     sheet.save(OUT / "contact_sheet.png")
 
+    icons = Image.new("RGBA", (BADGE * len(ICONS), BADGE), (255, 247, 218, 255))
+    for i, (key, (ring, fn)) in enumerate(ICONS.items()):
+        im = badge(ring, fn)
+        path = OUT / f"icon_{key}.png"
+        im.save(path, optimize=True)
+        sym = f"icon_{key}_png"
+        c_parts.append(c_array(sym, path.read_bytes()))
+        table.append(("icon", key, sym))
+        icons.alpha_composite(im, (i * BADGE, 0))
+    icons.save(OUT / "icons.png")
+
     C_FILE.parent.mkdir(parents=True, exist_ok=True)
-    total = sum((OUT / f"{n}_{k}.png").stat().st_size for n, k, _ in table)
+    total = sum((OUT / f"{n}_{k}.png").stat().st_size for n, k, _ in table)  # icons: n == "icon"
     entries = "\n".join(f'    {{"{n}", "{k}", {s}, sizeof({s})}},' for n, k, s in table)
     fx_entries = "\n".join(f'    {{"{n}", {i}, {x}, {y}, {b}}},' for n, i, x, y, b in fx_table)
     skin_entries = "\n".join(f'    {{"{n}", 0x{c["backdrop"].lstrip("#")}, {int(bool(c.get("cutout")))}}},'

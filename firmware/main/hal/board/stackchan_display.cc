@@ -379,6 +379,150 @@ std::vector<std::string> avatar_character::names()
     return names;
 }
 
+/* ------------------------- held expressions and skill badges ------------------------- */
+
+static std::string s_held_emotion;  // the last chat emotion ignored while an expression is held
+static bool s_skill_active = false;
+static lv_obj_t* s_badge   = nullptr;
+
+static void hide_badge()
+{
+    if (!s_badge || lv_obj_has_flag(s_badge, LV_OBJ_FLAG_HIDDEN)) {
+        return;
+    }
+    // Let the badge linger a moment, then fade it out
+    lv_anim_t a;
+    lv_anim_init(&a);
+    lv_anim_set_var(&a, s_badge);
+    lv_anim_set_values(&a, 255, 0);
+    lv_anim_set_delay(&a, 900);
+    lv_anim_set_duration(&a, 350);
+    lv_anim_set_exec_cb(&a, [](void* obj, int32_t v) { lv_obj_set_style_opa((lv_obj_t*)obj, v, 0); });
+    lv_anim_set_completed_cb(&a, [](lv_anim_t* anim) {
+        auto obj = (lv_obj_t*)anim->var;
+        lv_anim_delete(obj, nullptr);
+        lv_obj_add_flag(obj, LV_OBJ_FLAG_HIDDEN);
+    });
+    lv_anim_start(&a);
+}
+
+static void show_badge(const lv_image_dsc_t* icon)
+{
+    if (!s_badge) {
+        s_badge = lv_image_create(lv_screen_active());
+        lv_obj_align(s_badge, LV_ALIGN_TOP_RIGHT, 2, -6);
+        lv_obj_remove_flag(s_badge, LV_OBJ_FLAG_CLICKABLE);
+        lv_image_set_pivot(s_badge, 56, 40);  // the badge's center in the sprite
+    }
+    lv_anim_delete(s_badge, nullptr);
+    lv_obj_move_foreground(s_badge);  // above the face, which may have been replaced since
+    lv_image_set_src(s_badge, icon);
+    lv_obj_set_style_opa(s_badge, 255, 0);
+    lv_obj_remove_flag(s_badge, LV_OBJ_FLAG_HIDDEN);
+
+    // Pop in, like a move being used, then bob gently while the skill runs
+    lv_anim_t pop;
+    lv_anim_init(&pop);
+    lv_anim_set_var(&pop, s_badge);
+    lv_anim_set_values(&pop, 0, 256);
+    lv_anim_set_duration(&pop, 380);
+    lv_anim_set_path_cb(&pop, lv_anim_path_overshoot);
+    lv_anim_set_exec_cb(&pop, [](void* obj, int32_t v) { lv_image_set_scale((lv_obj_t*)obj, v); });
+    lv_anim_start(&pop);
+
+    lv_anim_t bob;
+    lv_anim_init(&bob);
+    lv_anim_set_var(&bob, s_badge);
+    lv_anim_set_values(&bob, -4, 4);
+    lv_anim_set_duration(&bob, 900);
+    lv_anim_set_reverse_duration(&bob, 900);
+    lv_anim_set_repeat_count(&bob, LV_ANIM_REPEAT_INFINITE);
+    lv_anim_set_path_cb(&bob, lv_anim_path_ease_in_out);
+    lv_anim_set_exec_cb(&bob, [](void* obj, int32_t v) { lv_obj_set_style_translate_y((lv_obj_t*)obj, v, 0); });
+    lv_anim_start(&bob);
+}
+
+// Ends a held expression or skill: hides the badge and applies the emotion the chat sent meanwhile.
+// Call with the LVGL lock held.
+static void release_hold()
+{
+    s_expression_until_us = 0;
+    if (s_expression_timer) {
+        esp_timer_stop(s_expression_timer);
+    }
+    if (s_skill_active) {
+        s_skill_active = false;
+        hide_badge();
+    }
+    std::string emotion = std::move(s_held_emotion);
+    s_held_emotion.clear();
+    if (s_display) {
+        s_display->SetEmotion(emotion.empty() ? "neutral" : emotion.c_str());
+    }
+}
+
+// Shows emotion and ignores the chat's emotions for us, or until release_hold(). LVGL lock held.
+static void hold_emotion(Emotion emotion, int64_t us)
+{
+    if (!s_expression_timer) {
+        esp_timer_create_args_t args = {};
+        args.name                    = "expression";
+        args.callback                = [](void*) {
+            LvglLockGuard lock;
+            if (s_expression_until_us) {
+                release_hold();
+            }
+        };
+        esp_timer_create(&args, &s_expression_timer);
+    }
+    esp_timer_stop(s_expression_timer);
+    s_held_emotion.clear();
+    s_expression_until_us = esp_timer_get_time() + us;
+    GetStackChan().avatar().setEmotion(emotion);
+    esp_timer_start_once(s_expression_timer, us);
+}
+
+// The badge for a tool call, or "" for tools that only change the robot itself
+static std::string skill_icon(const std::string& tool)
+{
+    static const char* const quiet[] = {"self.robot.set_character", "self.robot.get_character",
+                                        "self.robot.show_expression", "self.robot.set_head_angles",
+                                        "self.robot.get_head_angles", "self.robot.set_led_color",
+                                        "self.audio_speaker.",        "self.screen.",
+                                        "self.get_device_status",     "self.get_system_info",
+                                        "self.reboot",                "self.upgrade_firmware",
+                                        "self.assets."};
+    for (auto prefix : quiet) {
+        if (tool.rfind(prefix, 0) == 0) {
+            return "";
+        }
+    }
+    auto has = [&tool](const char* part) { return tool.find(part) != std::string::npos; };
+    if (has("muse")) return "muse";
+    if (has("weather")) return "weather";
+    if (has("news")) return "news";
+    if (has("search")) return "search";
+    if (has("reminder")) return "reminder";
+    if (has("camera") || has("photo")) return "camera";
+    return "sparkle";
+}
+
+// A tool call started ("% name..." from the chat): think, and show the skill's badge
+static void skill_begin(const std::string& tool)
+{
+    auto key = skill_icon(tool);
+    auto& stackchan = GetStackChan();
+    if (key.empty() || !stackchan.hasAvatar()) {
+        return;
+    }
+    ESP_LOGI(TAG, "Skill %s: %s", key.c_str(), tool.c_str());
+    s_skill_active = true;
+    hold_emotion(Emotion::Doubt, 90 * 1000000LL);  // safety: released by the answer or idle long before
+    if (auto icon = PokemonImages::icon(key)) {
+        show_badge(icon);
+    }
+}
+
 bool avatar_character::show_expression(const std::string& expression, int seconds)
 {
     static const char* const names[] = {"neutral", "happy", "angry", "sad", "doubt", "sleepy", "cool"};
@@ -393,27 +537,13 @@ bool avatar_character::show_expression(const std::string& expression, int second
         return false;
     }
 
-    if (!s_expression_timer) {
-        esp_timer_create_args_t args = {};
-        args.name                    = "expression";
-        args.callback                = [](void*) {
-            s_expression_until_us = 0;
-            LvglLockGuard lock;
-            if (GetStackChan().hasAvatar()) {
-                GetStackChan().avatar().setEmotion(Emotion::Neutral);
-            }
-        };
-        esp_timer_create(&args, &s_expression_timer);
-    }
-    esp_timer_stop(s_expression_timer);
-
-    seconds               = std::clamp(seconds, 1, 30);
-    s_expression_until_us = esp_timer_get_time() + seconds * 1000000LL;
+    seconds = std::clamp(seconds, 1, 30);
     {
         LvglLockGuard lock;
-        stackchan.avatar().setEmotion((Emotion)index);
+        s_skill_active = false;
+        hide_badge();
+        hold_emotion((Emotion)index, seconds * 1000000LL);
     }
-    esp_timer_start_once(s_expression_timer, seconds * 1000000ULL);
     ESP_LOGI(TAG, "Expression %s for %d s", expression.c_str(), seconds);
     return true;
 }
@@ -490,6 +620,18 @@ static bool on_console_command(const char* line)
         });
         return true;
     }
+    // ">say=TEXT" plays an assistant message, e.g. ">say=% weather_forecast..." starts a skill
+    if (cmd.rfind("say=", 0) == 0) {
+        auto text = cmd.substr(4);
+        Application::GetInstance().Schedule([text]() {
+            if (s_display) {
+                s_display->SetChatMessage("assistant", text.c_str());
+            }
+            printf("@say shown\n");
+            fflush(stdout);
+        });
+        return true;
+    }
     if (cmd.rfind("expr=", 0) == 0) {
         bool ok = avatar_character::show_expression(cmd.substr(5), 20);
         printf("@expr %s\n", ok ? "ok" : "error");
@@ -553,6 +695,7 @@ void StackChanAvatarDisplay::SetEmotion(const char* emotion)
 
     if (esp_timer_get_time() < s_expression_until_us) {
         ESP_LOGI(TAG, "SetEmotion: %s (holding an expression)", emotion);
+        s_held_emotion = emotion;
         return;
     }
     ESP_LOGI(TAG, "SetEmotion: %s", emotion);
@@ -632,10 +775,19 @@ void StackChanAvatarDisplay::SetChatMessage(const char* role, const char* conten
 
     DisplayLockGuard lock(this);
 
+    // Spoken replies aren't shown: the mouth moves while speaking. A tool call ("% name...") shows a
+    // skill badge and a thinking face until the answer starts. System messages (e.g. activation codes)
+    // still use the speech bubble.
     if (strcmp(role, "system") == 0) {
         stackchan.avatar().setSpeech(content);
     } else if (strcmp(role, "assistant") == 0) {
-        stackchan.avatar().setSpeech(content);
+        if (content[0] == '%' && content[1] == ' ') {
+            std::string tool(content + 2);
+            auto end = tool.find("...");
+            skill_begin(tool.substr(0, end));
+        } else if (s_skill_active) {
+            release_hold();
+        }
     }
 }
 
@@ -649,6 +801,9 @@ void StackChanAvatarDisplay::ClearChatMessages()
     DisplayLockGuard lock(this);
 
     stackchan.avatar().clearSpeech();
+    if (s_skill_active) {
+        release_hold();
+    }
 
     ESP_LOGI(TAG, "Chat messages cleared");
 }
