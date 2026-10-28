@@ -972,6 +972,9 @@ void StackChanAvatarDisplay::SetStatus(const char* status)
     } else if (strcmp(status, Lang::Strings::SPEAKING) == 0) {
         if (speaking_modifier_id_ < 0) {
             speaking_modifier_id_ = stackchan.addModifier(std::make_unique<SpeakingModifier>(0, 180, false));
+            if (auto gestures = emotion_motion()) {
+                gestures->replyStarted();
+            }
         }
 
         GetHAL().setRgbColor(0, 0, 0, 50);

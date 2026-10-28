@@ -21,7 +21,7 @@ namespace stackchan {
  *
  * It watches avatar().getEmotion(), so every way an emotion is set (the chat's emotions,
  * show_expression, skills) gets a gesture without extra hooks. Gestures are small (5-16 degrees),
- * only start when the emotion changes, and never fight a locked or already moving head.
+ * only start when the emotion changes (or a happy reply starts), and never fight a locked head.
  * Held gestures (angry, cool, sad, sleepy, thinking) stay until the emotion changes, then the head
  * goes back to where it was.
  */
@@ -63,6 +63,14 @@ public:
         _pending_nod = true;
     }
 
+    // A spoken reply started: if the face is happy, maybe nod. The chat keeps sending "happy", so the
+    // emotion rarely *changes* to happy; this gives replies a chance to nod anyway. The emotion can
+    // arrive just after the reply starts, so it is checked for a short while.
+    void replyStarted()
+    {
+        _reply_until_ms = GetHAL().millis() + 1500;
+    }
+
     // Plays the gesture for an emotion now, for testing ("neutral", "happy", ..., "nod")
     void test(const char* name)
     {
@@ -98,6 +106,14 @@ public:
             if (_enabled) {
                 apply(stackchan, emotion, now, false);
             }
+        } else if (_reply_until_ms && emotion == avatar::Emotion::Happy) {
+            _reply_until_ms = 0;
+            if (_enabled && _in_conversation && !_holding && _keys.empty() && happy_allowed(now)) {
+                start(stackchan, keys_for(emotion), false, now);
+            }
+        }
+        if (_reply_until_ms && now >= _reply_until_ms) {
+            _reply_until_ms = 0;
         }
         _last_emotion = emotion;
 
@@ -136,7 +152,7 @@ private:
                 return {{0, 0, -120, 100}};
             case avatar::Emotion::Doubt:  // look up toward the skill badge (top right of the screen,
                                           // which is the robot's left)
-                return {{0, -80, 60, 300}};
+                return {{0, -80, 60, 450}};
             default:
                 return {};
         }
@@ -163,9 +179,8 @@ private:
             return;
         }
         if (!test) {
-            // The chat sends "happy" for most replies: nod sometimes, not every time
             if (to == avatar::Emotion::Happy) {
-                if (now - _last_gesture_ms < 6000 || Random::getInstance().getInt(0, 99) >= 60) {
+                if (!happy_allowed(now)) {
                     return;
                 }
             } else if (now - _last_gesture_ms < 1500) {
@@ -175,24 +190,35 @@ private:
         start(stackchan, std::move(keys), held(to), now, was_holding ? From::Base : test ? From::Test : From::Here);
     }
 
-    // Here: from where the head is now, skipped if something else is moving it.
-    // Base: from the saved pose (the head is on its way back there from a held gesture).
-    // Test: like Here, but never skipped.
+    // The chat sends "happy" for most replies: nod about every other time, at most every 6 s
+    bool happy_allowed(uint32_t now)
+    {
+        // Counted from the last nod only: a quick skill's thinking look just before shouldn't block it
+        if (now - _last_nod_ms < 6000 || Random::getInstance().getInt(0, 99) >= 50) {
+            return false;
+        }
+        _last_nod_ms = now;
+        return true;
+    }
+
+    // Here: from where the head is now. Base: from the saved pose (the head is on its way back there
+    // from a held gesture). Test: like Here, from the console.
+    // Motion::isMoving() is not used to detect "someone else is moving the head": it reads the
+    // servo's move flag over the bus, which reports moving on a failed read or while holding against
+    // gravity, and would skip most gestures. During a conversation idle motion is off, and being
+    // picked up sets the modify lock.
     enum class From { Here, Base, Test };
 
     void start(Modifiable& stackchan, std::vector<Key> keys, bool hold, uint32_t now, From from = From::Here)
     {
         auto& motion = stackchan.motion();
-        // Someone else owns the head (picked up, petted, dancing)
+        // Someone else owns the head (picked up)
         if (keys.empty() || motion.isModifyLocked()) {
             return;
         }
         // While one of our gestures plays or holds, the base pose is still the right one
         bool keep_base = from == From::Base || _holding || !_keys.empty();
         if (!keep_base) {
-            if (from == From::Here && motion.isMoving()) {
-                return;  // another modifier or a tool is moving the head
-            }
             auto angles = motion.getCurrentAngles();
             _base_yaw   = angles.x;
             _base_pitch = angles.y;
@@ -235,11 +261,13 @@ private:
     size_t _next              = 0;
     uint32_t _start_ms        = 0;
     uint32_t _last_gesture_ms = 0;
+    uint32_t _last_nod_ms     = 0;
     bool _hold                = false;
     bool _holding             = false;
     int _base_yaw             = 0;
     int _base_pitch           = 0;
     volatile bool _pending_nod = false;
+    volatile uint32_t _reply_until_ms = 0;
     std::string _pending_test;
 };
 
