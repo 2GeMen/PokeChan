@@ -70,3 +70,6 @@ sdkconfig.old
 sdkconfig.defaults.local
 
 xiaozhi-esp32/
+
+# Local build logs
+build*.log

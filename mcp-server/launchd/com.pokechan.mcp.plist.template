@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- Runs mcp_pipe.py at login and keeps it running. install.sh fills in __DIR__ and __ENDPOINT_FILE__. -->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.pokechan.mcp</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>__DIR__/.venv/bin/python</string>
+        <string>__DIR__/mcp_pipe.py</string>
+        <string>__ENDPOINT_FILE__</string>
+    </array>
+    <key>WorkingDirectory</key>
+    <string>__DIR__</string>
+    <key>EnvironmentVariables</key>
+    <dict>
+        <!-- Your home city for weather without a city name -->
+        <key>POKECHAN_HOME_NAME</key>
+        <string>__HOME_NAME__</string>
+        <key>POKECHAN_HOME_LAT</key>
+        <string>__HOME_LAT__</string>
+        <key>POKECHAN_HOME_LON</key>
+        <string>__HOME_LON__</string>
+        <key>POKECHAN_HOME_TZ</key>
+        <string>__HOME_TZ__</string>
+    </dict>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+    <key>ThrottleInterval</key>
+    <integer>10</integer>
+    <key>StandardOutPath</key>
+    <string>__DIR__/logs/mcp_pipe.log</string>
+    <key>StandardErrorPath</key>
+    <string>__DIR__/logs/mcp_pipe.log</string>
+</dict>
+</plist>

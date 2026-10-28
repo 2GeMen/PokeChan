@@ -11,6 +11,9 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+#
+# Modified for PokeChan (2026, see NOTICE): builds MbedtlsCryptoBackend.cpp
+# with PRIV_REQUIRES mbedtls log.
 
 idf_component_register(
     SRCS

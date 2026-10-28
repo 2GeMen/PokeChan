@@ -1,0 +1,12 @@
+[project]
+name = "pokechan-mcp-server"
+version = "0.1.0"
+description = "PokeChan's Mac-side MCP tools (weather, web and news search) for the StackChan World App MCP endpoint"
+requires-python = ">=3.10"
+license = "MIT"
+dependencies = [
+    "mcp>=2.3,<3",
+    "websockets>=15",
+    "httpx>=0.27",
+    "ddgs>=9",
+]

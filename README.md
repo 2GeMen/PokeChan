@@ -1,32 +1,84 @@
-# StackChan Open-Source
+# PokeChan
 
-<img src="https://m5stack-doc.oss-cn-shenzhen.aliyuncs.com/1205/K151_stack_chan_main_pictures_01.webp" width="60%">
+[中文说明](README.zh-CN.md)
 
-Here are StackChan related open-source resources, including source code of the StackChan firmware, remote controller firmware, mobile app (iOS and Android), and server. 
+**PokeChan** is a community firmware mod for the [M5Stack StackChan](https://github.com/m5stack/StackChan)
+desktop robot. It keeps everything StackChan does and adds:
 
-Update of this repo could be a little late than the released firmware and mobile app. 
+- **Pokémon faces**: Pikachu, Charmander, Bulbasaur, Squirtle and Ditto, switchable by voice
+  ("switch to Pikachu"), with all the original animation: blinking, talking, breathing and idle glances.
+- **Signature moves**: Charmander's tail flame flares up when it's angry, Pikachu's cheeks spark, and
+  Squirtle puts on sunglasses when it's being cool.
+- **Skill badges**: while a tool runs, the face looks thoughtful and a badge pops up (weather, news,
+  search, Muse, reminder, camera), like a Pokémon using a move. The text speech bubble is gone; the
+  mouth just talks.
+- **Muse on board**: asks your [Meta Muse](https://gadgets.muse.ai/) assistant about your calendar,
+  email and memories, using the Muse Gadget SDK's session code ported into the firmware. Answers are
+  spoken in the same turn.
+- **Mac-side MCP tools**: free weather (Open-Meteo), web search and news search (DuckDuckGo) through
+  the StackChan World App's MCP endpoint, running as a login service on your Mac.
 
-----
+![The five faces](docs/pokechan/images/faces.png)
 
-<img src="https://cdn.shopify.com/s/files/1/0056/7689/2250/files/5a589623895f65487717894d9240f6b8.png" width="60%">
+![Signature moves](docs/pokechan/images/effects.png) ![Skill badges](docs/pokechan/images/skills.png)
 
-**StackChan is a super kawaii AI desktop robot co-created by M5Stack and the user community.** It uses the M5Stack **flagship IoT development kit [CoreS3](https://docs.m5stack.com/en/core/CoreS3)** as its main controller, powered by an ESP32-S3 SoC featuring a 240 MHz dual-core processor, with 16MB Flash and 8MB PSRAM onboard, and supporting Wi-Fi and BLE. The main unit also integrates a 2.0-inch capacitive touch display with a high-strength glass cover, a 0.3 MP camera, a proximity & ambient light sensor, a 9-axis IMU (accelerometer + gyroscope + magnetometer), a microSD card slot, a 1W speaker, dual microphones, and power/reset buttons. 
+> **Unofficial fan project.** PokeChan is not affiliated with, endorsed or sponsored by Nintendo,
+> The Pokémon Company, Game Freak, Creatures, M5Stack, Meta or Xiaozhi. Pokémon and its character
+> names and designs are trademarks and copyrights of their owners. The Pokémon faces are
+> non-commercial fan art. Read [DISCLAIMER.md](DISCLAIMER.md) before using or sharing them.
 
-The **robot body**, connected to the main unit, includes a USB-C interface for power and data, a 550 mAh battery, two feedback servos (360-degree continuous rotation on the horizontal axis and 90-degree movement on the vertical axis), two rows totaling 12 RGB LEDs, infrared transmitter and receiver, a three-zone touch panel, and a full-featured NFC module. 
+## How it fits together
 
-The **factory firmware** is feature-rich, including an AI Agent, lively and expressive animations, ESP-NOW wireless remote control, and online app downloads. It can connect to a mobile app for video viewing, remote avatar control, and more, and also supports online updates (OTA). The product also supports programming via Arduino, UiFlow2, and other methods, and can connect to various expansion units in the M5Stack ecosystem, making it easy to implement a wide range of custom functions. 
+```
+ "Hi Stack-chan"            ┌──────────────────────────────┐
+  voice ──────────────────▶ │ StackChan (ESP32-S3, CoreS3)  │
+                            │  xiaozhi voice + wake word    │
+                            │  PokeChan faces, skill badges │
+                            │  Muse bridge (Noise over WSS) ├──▶ Muse (Meta) — calendar, mail, memories
+                            └──────────────┬───────────────┘
+                                           │ MQTT / WebSocket
+                                           ▼
+                                  xiaozhi.me (free LLM, ASR, TTS)
+                                           │ MCP endpoint (WebSocket)
+                                           ▼
+                            Mac: mcp-server/ (weather, web and news search)
+```
 
-> ⚠️ Do not forcibly rotate any movable parts connected to the motors by hand when you are unsure whether the motors are powered and under control, as this may cause hardware damage. 
+## Repository layout
 
-- Purchase link: [M5Stack Official Store](https://shop.m5stack.com/products/stackchan-kawaii-co-created-open-source-ai-desktop-robot) | [淘宝 Taobao](https://item.taobao.com/item.htm?id=1042238294510)
+This repository is a fork of [m5stack/StackChan](https://github.com/m5stack/StackChan). PokeChan's
+changes are on the `pokechan` branch:
 
-- Product document page: [English](https://docs.m5stack.com/en/StackChan) | [日本語](https://docs.m5stack.com/ja/StackChan) | [中文](https://docs.m5stack.com/zh_CN/StackChan)
+| Path | What it is |
+| --- | --- |
+| `firmware/` | StackChan firmware with PokeChan's changes (ESP-IDF 5.5.4) |
+| `firmware/components/muse_hatch/` | Muse bridge: session code from the Muse Gadget SDK plus the StackChan glue |
+| `firmware/components/noise_core/`, `minimp3/` | Libraries from the Muse Gadget SDK |
+| `firmware/main/stackchan/avatar/skins/pokemon/` | Pokémon skins, fx layers and skill badges |
+| `firmware/tools/pokemon_faces/` | Generator that draws all face, fx and badge art |
+| `firmware/tools/muse/muse_token.py` | Moves your Muse device token from the official Muse firmware to PokeChan |
+| `firmware/patches/xiaozhi-esp32.patch` | Patch on xiaozhi-esp32 v2.2.4 (StackChan's, plus async MCP tools) |
+| `mcp-server/` | Mac-side MCP server and launchd service |
+| `docs/pokechan/` | PokeChan documentation (Chinese) |
+| `app/`, `server/`, `remote/` | Upstream StackChan app, server and remote, unchanged |
 
-- Board support package: https://github.com/m5stack/StackChan-BSP
+## Quick start
 
-Thank you to the contributors of the StackChan community, especially: 
+1. Build and flash the firmware: [docs/pokechan/build-and-flash.md](docs/pokechan/build-and-flash.md)
+2. Optional: connect Muse: [docs/pokechan/muse.md](docs/pokechan/muse.md)
+3. Optional: run the Mac tools: [docs/pokechan/mcp-server.md](docs/pokechan/mcp-server.md)
+4. Talk to it: [docs/pokechan/skills.md](docs/pokechan/skills.md) lists every tool and what to say.
 
-| ![](https://m5stack-doc.oss-cn-shenzhen.aliyuncs.com/1205/avatar_stack_chan.jpg) | ![](https://m5stack-doc.oss-cn-shenzhen.aliyuncs.com/1205/avatar_takao.jpg) |
-| -------------------------------------------------------------------------------- | --------------------------------------------------------------------------- |
-| [@stack_chan](https://x.com/stack_chan)                                          | [@mongonta555](https://x.com/mongonta555)                                   |
-| Shinya Ishikawa                                                                  | Takao Akaki                                                                 |
+More: [features and new assets](docs/pokechan/features.md) · [faces and the art generator](docs/pokechan/skins.md)
+· [debug console](docs/pokechan/debug-console.md) · [security and privacy](SECURITY.md)
+
+## Licenses
+
+- PokeChan's own code: MIT ([LICENSE](LICENSE)).
+- StackChan firmware: MIT, M5Stack ([firmware/LICENSE](firmware/LICENSE)); xiaozhi-esp32: MIT.
+- Code from the Muse Gadget SDK: Apache-2.0, Meta Platforms
+  ([firmware/components/muse_hatch/LICENSE.muse-gadget-sdk](firmware/components/muse_hatch/LICENSE.muse-gadget-sdk));
+  modified files say so in their headers.
+- Everything else: see [NOTICE](NOTICE) and [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md).
+
+The original StackChan README is kept as [README.StackChan.md](README.StackChan.md).

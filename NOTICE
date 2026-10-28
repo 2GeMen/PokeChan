@@ -1,0 +1,73 @@
+PokeChan
+Copyright (c) 2026 PokeChan contributors
+
+PokeChan is a community modification of the M5Stack StackChan firmware. It is
+not affiliated with, endorsed or sponsored by Nintendo, The Pokémon Company,
+Game Freak, Creatures, M5Stack, Meta Platforms or Shenzhen Xinzhi Future
+Technology (xiaozhi). See DISCLAIMER.md.
+
+Licensing overview
+------------------
+
+* PokeChan's own code, documentation, generator scripts and skill badge art are
+  licensed under the MIT License (LICENSE).
+* The Pokémon character art (firmware/main/stackchan/avatar/skins/pokemon/
+  pokemon_assets.c character entries and the character definitions in
+  firmware/tools/pokemon_faces/gen_faces.py) is unofficial, non-commercial fan
+  art. The MIT License grants no rights in the underlying Pokémon characters,
+  names or designs, which belong to their owners. See DISCLAIMER.md.
+* Third-party code keeps its own license; see THIRD_PARTY_LICENSES.md.
+
+StackChan
+---------
+This repository is a fork of https://github.com/m5stack/StackChan
+Copyright (c) 2026 M5Stack Technology CO LTD, MIT License (firmware/LICENSE,
+server/LICENSE). The app/, server/ and remote/ directories are unchanged from
+upstream.
+
+xiaozhi-esp32
+-------------
+https://github.com/78/xiaozhi-esp32 (v2.2.4), fetched at build time and patched
+by firmware/patches/xiaozhi-esp32.patch.
+Copyright (c) 2025 Shenzhen Xinzhi Future Technology Co., Ltd., MIT License.
+PokeChan adds to StackChan's patch: McpServer::AddAsyncTool, McpTool async
+callbacks and McpTool::ResultJson (main/mcp_server.h, main/mcp_server.cc).
+
+Muse Gadget SDK
+---------------
+https://github.com/facebookincubator/muse-gadget-sdk (snapshot of 2026-10-27)
+Copyright (c) Meta Platforms, Inc. and affiliates.
+Licensed under the Apache License, Version 2.0
+(firmware/components/muse_hatch/LICENSE.muse-gadget-sdk,
+firmware/components/noise_core/LICENSE).
+
+Files taken from the SDK:
+  firmware/components/muse_hatch/: muse_account_api.c/.h, muse_chat.c,
+    muse_chat.h, muse_chat_priv.h, muse_chat_session.cpp, muse_chat_text.c,
+    muse_link.h, muse_settings.h, muse_text.c/.h, muse_wifi.h
+  firmware/components/noise_core/ (whole component)
+  firmware/components/minimp3/ (whole component; minimp3 itself is CC0-1.0)
+
+Files modified by PokeChan (each says so in its header):
+  muse_hatch/muse_chat_session.cpp  MbedtlsCryptoBackend instead of
+      PsaCryptoBackend; handshake msg3 status logging; 32-bit log formats;
+      minimum one-tick wait in the session loop; task priority 2
+  muse_hatch/muse_chat_text.c, muse_hatch/muse_chat.h  console reply hook
+      (muse_hatch_console_hook)
+  noise_core/src/MbedtlsCryptoBackend.cpp  non-null pointer for an empty
+      AES-GCM plaintext; GCM failure logging
+  noise_core/CMakeLists.txt  builds MbedtlsCryptoBackend.cpp
+
+Files written for PokeChan (MIT): muse_hatch/muse_bridge.c, muse_ask.c,
+muse_hatch_shim.c, muse_state.h, include/muse_bridge.h, CMakeLists.txt,
+Kconfig.
+
+"Muse" and "Meta" are trademarks of Meta Platforms, Inc., used here only to
+describe compatibility.
+
+Data and services
+-----------------
+Weather data by Open-Meteo.com (https://open-meteo.com/), licensed under
+CC BY 4.0. Web and news search through DuckDuckGo via the ddgs library; not an
+official DuckDuckGo API. Voice, language model and MCP endpoint by xiaozhi.me.
+Each service has its own terms of use.

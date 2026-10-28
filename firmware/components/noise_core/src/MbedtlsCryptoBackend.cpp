@@ -12,6 +12,10 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ * Modified for PokeChan (2026, see NOTICE in the repository root):
+ *   Aes256GcmSeal passes a non-null pointer for an empty plaintext
+ *   (ESP-IDF 5.5 hardware GCM rejects null) and logs GCM failures.
  */
 
 #include <xplat/noise/core/MbedtlsCryptoBackend.h>

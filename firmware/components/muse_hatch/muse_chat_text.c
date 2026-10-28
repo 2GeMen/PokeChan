@@ -12,6 +12,9 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ * Modified for PokeChan (2026, see NOTICE in the repository root):
+ *   Adds muse_hatch_console_hook, called with each console reply line.
  */
 
 /* Shared by both chat backends: the voice note's encoding, and reply and

@@ -12,6 +12,11 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ * Modified for PokeChan (2026, see NOTICE in the repository root):
+ *   Uses MbedtlsCryptoBackend instead of PsaCryptoBackend (ESP-IDF 5.5);
+ *   logs the handshake msg3 status detail; 32-bit log formats (newlib nano printf);
+ *   waits at least one tick in the session loop and runs it at priority 2.
  */
 
 /*
