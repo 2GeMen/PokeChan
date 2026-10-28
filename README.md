@@ -20,6 +20,8 @@ desktop robot. It keeps everything StackChan does and adds:
 - **Mac-side MCP tools**: free weather (Open-Meteo), web search and news search (DuckDuckGo) through
   the StackChan World App's MCP endpoint, running as a login service on your Mac.
 
+![PokeChan at a glance](docs/pokechan/images/promo/hero.jpg)
+
 ![The five faces](docs/pokechan/images/faces.png)
 
 ![Signature moves](docs/pokechan/images/effects.png) ![Skill badges](docs/pokechan/images/skills.png)
@@ -61,18 +63,21 @@ changes are on the `pokechan` branch:
 | `firmware/tools/muse/muse_token.py` | Moves your Muse device token from the official Muse firmware to PokeChan |
 | `firmware/patches/xiaozhi-esp32.patch` | Patch on xiaozhi-esp32 v2.2.4 (StackChan's, plus async MCP tools) |
 | `mcp-server/` | Mac-side MCP server and launchd service |
+| `tools/promo/` | Promo video, cover and score pipeline (3D render of the official model, original music) |
 | `docs/pokechan/` | PokeChan documentation (Chinese) |
 | `app/`, `server/`, `remote/` | Upstream StackChan app, server and remote, unchanged |
 
 ## Quick start
 
-1. Build and flash the firmware: [docs/pokechan/build-and-flash.md](docs/pokechan/build-and-flash.md)
+1. Flash the prebuilt firmware from [Releases](../../releases), or build it yourself:
+   [docs/pokechan/build-and-flash.md](docs/pokechan/build-and-flash.md)
 2. Optional: connect Muse: [docs/pokechan/muse.md](docs/pokechan/muse.md)
 3. Optional: run the Mac tools: [docs/pokechan/mcp-server.md](docs/pokechan/mcp-server.md)
 4. Talk to it: [docs/pokechan/skills.md](docs/pokechan/skills.md) lists every tool and what to say.
 
 More: [features and new assets](docs/pokechan/features.md) · [faces and the art generator](docs/pokechan/skins.md)
-· [debug console](docs/pokechan/debug-console.md) · [security and privacy](SECURITY.md)
+· [debug console](docs/pokechan/debug-console.md) · [promo video tools](tools/promo/README.md)
+· [security and privacy](SECURITY.md)
 
 ## Licenses
 

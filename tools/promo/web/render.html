@@ -1,0 +1,199 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>PokeChan render</title>
+<style>html,body{margin:0;background:#111;color:#ccc;font:12px system-ui}canvas{display:block;max-width:960px;max-height:540px}#log{padding:6px}</style>
+<div id="log">loading…</div>
+<script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"}}</script>
+<script type="module">
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+
+// Rendering of the official StackChan model (app/assets/stack_chan_model.glb).
+// World: Z up, the screen faces -Y. Units are millimetres.
+// ?w=1080&h=1920 for vertical; frames are posted at this size
+const QS = new URLSearchParams(location.search);
+const WIDTH = +(QS.get('w') || 1920), HEIGHT = +(QS.get('h') || 1080);
+const log = t => (document.getElementById('log').textContent = t);
+
+const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+renderer.setPixelRatio(1);
+renderer.setSize(WIDTH, HEIGHT, false);
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.0;
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+document.body.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+const pmrem = new THREE.PMREMGenerator(renderer);
+scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+
+const key = new THREE.DirectionalLight(0xffffff, 1.6);
+key.position.set(-120, -160, 220);
+key.castShadow = true;
+key.shadow.mapSize.set(2048, 2048);
+Object.assign(key.shadow.camera, { left: -300, right: 300, top: 300, bottom: -300, near: 10, far: 800 });
+key.shadow.radius = 8;
+key.shadow.bias = -0.0005;
+scene.add(key);
+const rim = new THREE.DirectionalLight(0xffffff, 0.8);
+rim.position.set(160, 140, 120);
+scene.add(rim);
+
+const ground = new THREE.Mesh(new THREE.PlaneGeometry(4000, 4000), new THREE.ShadowMaterial({ opacity: 0.22 }));
+ground.receiveShadow = true;
+scene.add(ground);
+
+const camera = new THREE.PerspectiveCamera(30, WIDTH / HEIGHT, 5, 5000);
+camera.up.set(0, 0, 1);
+
+// ---------------------------------------------------------------- materials, as in the official renders
+const ALU = new THREE.MeshStandardMaterial({ color: '#e1e2e5', metalness: 0.18, roughness: 0.5 });
+const ALU_DARK = new THREE.MeshStandardMaterial({ color: '#b9bbc0', metalness: 0.2, roughness: 0.5 });
+const GLASS = new THREE.MeshPhysicalMaterial({ color: '#060608', metalness: 0, roughness: 0.06, clearcoat: 1, clearcoatRoughness: 0.03 });
+const BASE = new THREE.MeshStandardMaterial({ color: '#55585e', metalness: 0.2, roughness: 0.6 });
+const BASE_TOP = new THREE.MeshStandardMaterial({ color: '#6a6d73', metalness: 0.3, roughness: 0.5 });
+
+function restyle(mesh) {
+  const m = mesh.material;
+  const c = m.color ? m.color.clone().convertLinearToSRGB() : new THREE.Color(0.75, 0.75, 0.75);
+  const lum = (c.r + c.g + c.b) / 3;
+  const part = mesh.name.split('_00_stackchan450_')[1] || '';
+  if (part.startsWith('3')) return (mesh.material = part === '3_1' ? BASE : BASE_TOP);
+  if (lum < 0.05) return (mesh.material = GLASS);
+  if (c.r > 0.9 && c.g < 0.8) return (mesh.material = new THREE.MeshStandardMaterial({ color: '#E8794A', roughness: 0.4 }));
+  if (part.startsWith('2')) return (mesh.material = lum > 0.7 ? ALU_DARK : BASE_TOP);
+  mesh.material = lum > 0.7 ? ALU : ALU_DARK;
+}
+
+// ---------------------------------------------------------------- model + servo pivots
+const gltf = await new GLTFLoader().loadAsync('/app/assets/stack_chan_model.glb');
+const proto = gltf.scene;
+proto.getObjectByName('plane').visible = false;
+proto.traverse(o => { if (o.isMesh) { restyle(o); o.castShadow = true; o.receiveShadow = true; } });
+proto.updateMatrixWorld(true);
+
+const box = n => new THREE.Box3().setFromObject(proto.getObjectByName(n));
+const headBox = box('_00_stackchan450_1'), midBox = box('_00_stackchan450_2'), baseBox = box('_00_stackchan450_3');
+ground.position.z = baseBox.min.z;
+window.boxes = { head: [headBox.min.toArray(), headBox.max.toArray()], mid: [midBox.min.toArray(), midBox.max.toArray()], base: [baseBox.min.toArray(), baseBox.max.toArray()] };
+
+// Pivot positions (world). Tuned in probe: yaw about Z through the base centre; pitch about X near the
+// bottom of the head where the bracket holds it.
+const PIV = window.PIV = {
+  yaw: new THREE.Vector3((baseBox.min.x + baseBox.max.x) / 2, (baseBox.min.y + baseBox.max.y) / 2, 0),
+  pitch: new THREE.Vector3(0, (headBox.min.y + headBox.max.y) / 2, headBox.min.z + 8),
+};
+
+function makeUnit(screenSize = [640, 480]) {
+  const root = proto.clone(true);
+  const unit = new THREE.Group();
+  unit.add(root);
+  root.updateMatrixWorld(true);
+  const head = root.getObjectByName('_00_stackchan450_1');
+  const mid = root.getObjectByName('_00_stackchan450_2');
+  const yaw = new THREE.Group(); yaw.position.copy(PIV.yaw); unit.add(yaw);
+  const pitch = new THREE.Group(); pitch.position.copy(PIV.pitch); unit.add(pitch);
+  unit.updateMatrixWorld(true);
+  yaw.attach(mid);
+  yaw.attach(pitch);
+  pitch.attach(head);
+  // screen: an emissive plane just in front of the glass, sized like the CoreS3 panel (2.0", 4:3)
+  const canvas = document.createElement('canvas');
+  canvas.width = screenSize[0]; canvas.height = screenSize[1];
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.anisotropy = 8;
+  const scr = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), new THREE.MeshBasicMaterial({ map: tex, toneMapped: false }));
+  scr.name = 'screen';
+  head.add(scr);
+  return { unit, yaw, pitch, head, scr, canvas, tex, ctx: canvas.getContext('2d') };
+}
+
+// Screen placement in head-local coordinates: exactly over the grey LCD rectangle in the model
+const SCREEN = window.SCREEN = { x: 0.29, y: 15.6, z: 0, w: 41.3, h: 31.5 };  // measured from the model's LCD
+function placeScreen(u) {
+  u.scr.position.set(SCREEN.x, SCREEN.y, SCREEN.z);
+  u.scr.rotation.set(Math.PI / 2, Math.PI, 0);
+  u.scr.scale.set(SCREEN.w, SCREEN.h, 1);
+}
+
+let units = [];
+function setUnits(n) {
+  units.forEach(u => scene.remove(u.unit));
+  units = Array.from({ length: n }, () => makeUnit());
+  units.forEach(u => { placeScreen(u); scene.add(u.unit); });
+}
+setUnits(1);
+
+// ---------------------------------------------------------------- frames
+const imgCache = new Map();
+function loadImg(src) {
+  if (!imgCache.has(src)) {
+    imgCache.set(src, new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = '../' + src; }));
+    if (imgCache.size > 400) imgCache.delete(imgCache.keys().next().value);
+  }
+  return imgCache.get(src);
+}
+
+const bgColor = new THREE.Color();
+async function applyFrame(f, shot) {
+  const devs = f.units || [f];
+  if (units.length !== devs.length) setUnits(devs.length);
+  for (let i = 0; i < devs.length; i++) {
+    const d = devs[i], u = units[i];
+    placeScreen(u);
+    u.unit.position.set(...(d.pos || [0, 0, 0]));
+    u.unit.rotation.z = (d.turn || 0) * Math.PI / 180;
+    u.yaw.rotation.z = (d.yaw || 0) * Math.PI / 180;
+    u.pitch.rotation.x = (d.pitch || 0) * Math.PI / 180;
+    const img = d.screen ? await loadImg(d.screen) : null;
+    u.ctx.fillStyle = '#000'; u.ctx.fillRect(0, 0, u.canvas.width, u.canvas.height);
+    if (img) {
+      // the plane's UVs run 180 degrees from the panel's, so draw the frame turned around
+      u.ctx.save(); u.ctx.translate(u.canvas.width, u.canvas.height); u.ctx.rotate(Math.PI);
+      u.ctx.drawImage(img, 0, 0, u.canvas.width, u.canvas.height); u.ctx.restore();
+    }
+    u.tex.needsUpdate = true;
+  }
+  const c = f.cam || shot.cam;
+  camera.fov = c.fov || 30;
+  camera.position.set(...c.pos);
+  camera.lookAt(...c.target);
+  // shift: moves the subject down the frame (px) to leave room for titles, without changing perspective
+  const shift = f.shift ?? shot.shift ?? 0;
+  if (shift) camera.setViewOffset(WIDTH, HEIGHT, 0, -shift, WIDTH, HEIGHT); else camera.clearViewOffset();
+  camera.updateProjectionMatrix();
+  const bg = f.bg || shot.bg || '#000000';
+  bgColor.set(bg);
+  scene.background = bgColor;
+  const light = (bgColor.r + bgColor.g + bgColor.b) / 3 > 0.5;
+  ground.material.opacity = f.shadow ?? shot.shadow ?? (light ? 0.18 : 0.0);
+  renderer.toneMappingExposure = f.exposure ?? shot.exposure ?? 1.0;
+  renderer.render(scene, camera);
+}
+
+async function post(clip, n) {
+  const blob = await new Promise(r => renderer.domElement.toBlob(r, 'image/png'));
+  await fetch(`/frame/${clip}/${n}`, { method: 'POST', body: blob });
+}
+
+window.renderShot = async (name, opts = {}) => {
+  const shot = await (await fetch(`../shots/${name}.json?${Date.now()}`)).json();
+  const from = opts.from || 0, to = Math.min(opts.to ?? shot.frames.length, shot.frames.length);
+  const t0 = performance.now();
+  for (let i = from; i < to; i++) {
+    await applyFrame(shot.frames[i], shot);
+    if (!opts.preview) await post(name, i);
+    if (i % 10 === 0) log(`${name} ${i + 1}/${shot.frames.length}  ${((performance.now() - t0) / 1000).toFixed(0)}s`);
+  }
+  log(`${name} done ${to - from} frames in ${((performance.now() - t0) / 1000).toFixed(0)}s`);
+  return to - from;
+};
+window.previewFrame = async (name, i) => { const shot = await (await fetch(`../shots/${name}.json?${Date.now()}`)).json(); await applyFrame(shot.frames[i], shot); return true; };
+window.still = async (f) => { await applyFrame(f, f); return true; };
+window.THREE = THREE; window.scene = scene; window.units = () => units;
+log('ready');
+window.ready = true;
+</script>

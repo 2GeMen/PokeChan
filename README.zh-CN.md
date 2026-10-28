@@ -11,6 +11,8 @@
 - **内置 Muse**：把 Muse Gadget SDK 的会话代码移植进固件，可以问你的 [Meta Muse](https://gadgets.muse.ai/) 日程、邮件和记忆，答案在同一轮对话里直接念出来。
 - **Mac 端 MCP 工具**：通过 StackChan World App 的 MCP 接入点，接入免费的天气（Open-Meteo）、网页搜索和新闻搜索（DuckDuckGo），在 Mac 上开机自启。
 
+![PokeChan 功能一览](docs/pokechan/images/promo/hero.jpg)
+
 ![五种脸](docs/pokechan/images/faces.png)
 
 ![招牌特效](docs/pokechan/images/effects.png) ![技能图标](docs/pokechan/images/skills.png)
@@ -48,12 +50,13 @@
 | `firmware/tools/muse/muse_token.py` | 把 Muse 设备令牌从官方 Muse 固件转移到 PokeChan |
 | `firmware/patches/xiaozhi-esp32.patch` | xiaozhi-esp32 v2.2.4 的补丁（StackChan 原有的，加上异步 MCP 工具） |
 | `mcp-server/` | Mac 端 MCP 服务和 launchd 开机自启配置 |
+| `tools/promo/` | 宣传片、封面和配乐的制作工具（用官方 3D 模型渲染，配乐为原创） |
 | `docs/pokechan/` | PokeChan 文档（中文） |
 | `app/`、`server/`、`remote/` | StackChan 上游的 App、服务端和遥控器，未改动 |
 
 ## 快速开始
 
-1. 编译并刷入固件：[docs/pokechan/build-and-flash.md](docs/pokechan/build-and-flash.md)
+1. 从 [Releases](../../releases) 下载编译好的固件直接刷入，或者自己编译：[docs/pokechan/build-and-flash.md](docs/pokechan/build-and-flash.md)
 2. 可选，接入 Muse：[docs/pokechan/muse.md](docs/pokechan/muse.md)
 3. 可选，部署 Mac 端工具：[docs/pokechan/mcp-server.md](docs/pokechan/mcp-server.md)
 4. 开始对话：[docs/pokechan/skills.md](docs/pokechan/skills.md) 列出了所有工具和对应的说法。
@@ -62,6 +65,7 @@
 - [功能特性与新增资源](docs/pokechan/features.md)
 - [脸盘与素材生成器](docs/pokechan/skins.md)
 - [串口调试命令](docs/pokechan/debug-console.md)
+- [宣传片与封面制作工具](tools/promo/README.md)
 - [安全与隐私](SECURITY.md)
 
 ## 许可证

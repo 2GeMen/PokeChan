@@ -42,6 +42,13 @@ carries its own license in `firmware/managed_components/`.
 | NumPy | BSD-3-Clause | same |
 | esptool, pyserial | GPL-2.0-or-later / BSD-3-Clause | `firmware/tools/muse/muse_token.py` (run as separate programs / imported; not distributed here) |
 | ESP-IDF `nvs_partition_tool` | Apache-2.0 | `muse_token.py read` (loaded from your ESP-IDF install) |
+| [three.js](https://threejs.org/) r160 | MIT | `tools/promo/web/render.html` (loaded from the jsDelivr CDN at render time; not distributed here) |
+| imageio-ffmpeg (bundles an FFmpeg binary) | BSD-2-Clause / FFmpeg: LGPL-2.1+ or GPL | `tools/promo/` encoding (installed by the user, run as a separate program; not distributed here) |
+| [Noto Sans SC](https://fonts.google.com/noto/specimen/Noto+Sans+SC) | SIL Open Font License 1.1 | `tools/promo/` titles and captions (downloaded by the user; not distributed here) |
+| StackChan 3D model (`app/assets/stack_chan_model.glb`) | MIT, M5Stack (upstream) | rendered by `tools/promo/` |
+
+The promo score and sound effects are synthesized by `tools/promo/music.py`, `music_h.py` and
+`compose.py`; they are original to this project and covered by its MIT License.
 
 ## Services and data
 
