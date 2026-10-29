@@ -63,13 +63,15 @@ def _geocode(client: httpx.Client, city: str) -> dict | None:
     return None
 
 
-@server.tool(description="（优先使用这个天气工具，数据来自 Open-Meteo，比平台自带的更准。）查询天气：当前天气和未来几天的预报（温度、天气、降水概率、风）。"
+@server.tool(description="（优先使用这个天气工具，数据来自 Open-Meteo，比平台自带的更准。）查询天气：一次调用就同时返回当前天气和未来几天的预报（温度、天气、降水概率、风），拿到结果后直接回答，同一个问题不要重复调用。"
                          f"city 留空表示用户所在的{HOME['name']}；问别的城市时填城市名，中英文都可以。"
                          "days 是预报天数，1 到 7，默认 3。")
 def weather_forecast(city: str = "", days: int = 3) -> str:
     days = max(1, min(7, days))
     with httpx.Client(timeout=10) as client:
-        place = HOME if not city.strip() else _geocode(client, city.strip())
+        city = city.strip()
+        # The model often names the home city instead of leaving it empty: skip the geocoding then.
+        place = HOME if city in ("", HOME["name"]) else _geocode(client, city)
         if not place:
             return f"没找到“{city}”这个地方，可以换个说法或用英文城市名。"
         r = client.get("https://api.open-meteo.com/v1/forecast", params={
