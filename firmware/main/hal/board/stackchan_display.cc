@@ -21,6 +21,7 @@
 #include "avatar_character.h"
 #include <application.h>
 #include <muse_bridge.h>
+#include <wake_words/afe_wake_word.h>
 #include <esp_heap_caps.h>
 #include <algorithm>
 
@@ -631,7 +632,7 @@ static void print_snapshot()
 }
 
 // Debug console commands: ">face=NAME", ">say=TEXT", ">expr=NAME", ">move=NAME", ">head", ">gestures=on|off",
-// ">tz[=POSIX]", ">snap", ">mem"
+// ">tz[=POSIX]", ">wake[=THRESHOLD|default|test|normal]", ">snap", ">mem"
 static bool on_console_command(const char* line)
 {
     std::string cmd(line);
@@ -689,6 +690,23 @@ static bool on_console_command(const char* line)
         bool on = cmd.substr(9) == "on";
         avatar_character::set_head_gestures(on);
         printf("@gestures %s\n", on ? "on" : "off");
+        fflush(stdout);
+        return true;
+    }
+    // ">wake" prints the wake word threshold; ">wake=0.50" sets it (saved), ">wake=default" restores the
+    // model's; ">wake=test" counts detections without waking up, ">wake=normal" ends that
+    if (cmd.rfind("wake", 0) == 0) {
+        auto arg = cmd.size() > 5 && cmd[4] == '=' ? cmd.substr(5) : std::string();
+        bool ok = true;
+        if (arg == "test" || arg == "normal") {
+            AfeWakeWord::SetCountOnly(arg == "test");
+        } else if (arg == "default") {
+            ok = AfeWakeWord::SetThreshold(0);
+        } else if (!arg.empty()) {
+            ok = AfeWakeWord::SetThreshold((int)(atof(arg.c_str()) * 1000 + 0.5f));
+        }
+        printf("@wake %s threshold=%d test=%s hits=%d\n", ok ? "ok" : "error", AfeWakeWord::GetThreshold(),
+               AfeWakeWord::IsCountOnly() ? "on" : "off", AfeWakeWord::Hits());
         fflush(stdout);
         return true;
     }

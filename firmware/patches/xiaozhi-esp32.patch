@@ -316,6 +316,134 @@ index 3692e0c..7bfbc5c 100644
      
      // Strategy instance
      std::unique_ptr<AssetStrategy> strategy_;
+diff --git a/main/audio/wake_words/afe_wake_word.cc b/main/audio/wake_words/afe_wake_word.cc
+index 8fc5fef..37d5b4f 100644
+--- a/main/audio/wake_words/afe_wake_word.cc
++++ b/main/audio/wake_words/afe_wake_word.cc
+@@ -2,11 +2,21 @@
+ #include "audio_service.h"
+ #include <esp_log.h>
+ #include <sstream>
++#include <atomic>
++#include "settings.h"
+ 
+ #define DETECTION_RUNNING_EVENT 1
+ 
+ #define TAG "AfeWakeWord"
+ 
++static AfeWakeWord* s_instance = nullptr;
++static int s_threshold_milli = 0;   // 0: the model's own
++// PokeChan default: "Hi Stack Chan" (a TTS-trained model) caught 7/10 at the model's 0.585,
++// 20/20 at 0.50 (near and at twice the distance), with no false wakes over 8 min of speech.
++static constexpr int kDefaultThresholdMilli = 500;
++static std::atomic<bool> s_count_only{false};
++static std::atomic<int> s_hits{0};
++
+ AfeWakeWord::AfeWakeWord()
+     : afe_data_(nullptr),
+       wake_word_pcm_(),
+@@ -80,6 +90,10 @@ bool AfeWakeWord::Initialize(AudioCodec* codec, srmodel_list_t* models_list) {
+     afe_iface_ = esp_afe_handle_from_config(afe_config);
+     afe_data_ = afe_iface_->create_from_config(afe_config);
+ 
++    s_instance = this;
++    s_threshold_milli = Settings("wake").GetInt("threshold", kDefaultThresholdMilli);
++    ApplyThreshold();
++
+     xTaskCreate([](void* arg) {
+         auto this_ = (AfeWakeWord*)arg;
+         this_->AudioDetectionTask();
+@@ -149,6 +163,13 @@ void AfeWakeWord::AudioDetectionTask() {
+         // Store the wake word data for voice recognition, like who is speaking
+         StoreWakeWordData(res->data, res->data_size / sizeof(int16_t));
+ 
++        if (res->wakeup_state == WAKENET_DETECTED && s_count_only) {
++            int hits = ++s_hits;
++            ESP_LOGI(TAG, "Wake test hit %d (threshold %d)", hits, s_threshold_milli);
++            printf("@wake hit %d\n", hits);
++            fflush(stdout);
++            continue;
++        }
+         if (res->wakeup_state == WAKENET_DETECTED) {
+             Stop();
+             last_detected_wake_word_ = wake_words_[res->wakenet_model_index - 1];
+@@ -160,6 +181,47 @@ void AfeWakeWord::AudioDetectionTask() {
+     }
+ }
+ 
++void AfeWakeWord::ApplyThreshold() {
++    if (afe_data_ == nullptr) {
++        return;
++    }
++    if (s_threshold_milli > 0) {
++        afe_iface_->set_wakenet_threshold(afe_data_, 1, s_threshold_milli / 1000.0f);
++    } else {
++        afe_iface_->reset_wakenet_threshold(afe_data_, 1);
++    }
++    ESP_LOGI(TAG, "Wake threshold: %d (0: model default)", s_threshold_milli);
++}
++
++bool AfeWakeWord::SetThreshold(int milli) {
++    if (milli != 0 && (milli < 300 || milli > 950)) {
++        return false;
++    }
++    s_threshold_milli = milli;
++    Settings("wake", true).SetInt("threshold", milli);
++    if (s_instance) {
++        s_instance->ApplyThreshold();
++    }
++    return true;
++}
++
++int AfeWakeWord::GetThreshold() {
++    return s_threshold_milli;
++}
++
++void AfeWakeWord::SetCountOnly(bool on) {
++    s_hits = 0;
++    s_count_only = on;
++}
++
++bool AfeWakeWord::IsCountOnly() {
++    return s_count_only;
++}
++
++int AfeWakeWord::Hits() {
++    return s_hits;
++}
++
+ void AfeWakeWord::StoreWakeWordData(const int16_t* data, size_t samples) {
+     // store audio data to wake_word_pcm_
+     wake_word_pcm_.emplace_back(std::vector<int16_t>(data, data + samples));
+diff --git a/main/audio/wake_words/afe_wake_word.h b/main/audio/wake_words/afe_wake_word.h
+index 6c2bf72..4d2f7d9 100644
+--- a/main/audio/wake_words/afe_wake_word.h
++++ b/main/audio/wake_words/afe_wake_word.h
+@@ -34,6 +34,16 @@ public:
+     bool GetWakeWordOpus(std::vector<uint8_t>& opus);
+     const std::string& GetLastDetectedWakeWord() const { return last_detected_wake_word_; }
+ 
++    // Tuning (PokeChan debug console). Threshold in thousandths, 0 for the
++    // model's own; it's saved in NVS (wake/threshold) and applied at start
++    // (default 500, see afe_wake_word.cc).
++    static bool SetThreshold(int milli);
++    static int GetThreshold();
++    // Count-only test: detections are counted and logged but don't wake the device.
++    static void SetCountOnly(bool on);
++    static bool IsCountOnly();
++    static int Hits();
++
+ private:
+     srmodel_list_t *models_ = nullptr;
+     const esp_afe_sr_iface_t* afe_iface_ = nullptr;
+@@ -57,6 +67,7 @@ private:
+ 
+     void StoreWakeWordData(const int16_t* data, size_t size);
+     void AudioDetectionTask();
++    void ApplyThreshold();
+ };
+ 
+ #endif
 diff --git a/main/boards/common/i2c_device.cc b/main/boards/common/i2c_device.cc
 index 835997d..ea50d51 100644
 --- a/main/boards/common/i2c_device.cc

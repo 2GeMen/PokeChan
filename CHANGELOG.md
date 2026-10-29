@@ -14,6 +14,8 @@ First public release. 首个公开版本。
   Head gestures that follow the emotion; can be turned off by voice.
 - **更安静的待机**：待机时头保持不动，只在白天整点活动一下（晚 11 点到早 7 点不动），被唤醒时抬头看人。
   Quieter idle: the head keeps still, looks around on the hour in the daytime, and looks up when woken.
+- **唤醒更灵**："Hi Stack Chan" 的唤醒门槛从 0.585 调到 0.50，实测唤醒率从 7/10 提高到 20/20，没有发现误唤醒。
+  Wake word threshold 0.585 → 0.50: 7/10 → 20/20 in testing, no false wakes.
 - **技能图标**：调用工具时显示思考表情，并弹出天气、新闻、搜索、Muse、提醒、拍照等图标；去掉了显示不了中文的文字气泡。
   Skill badges while tools run; the broken text bubble is gone.
 - **Muse 桥**：把 Muse Gadget SDK 的会话移植进固件，异步 MCP 工具让答案在同一轮对话里念出来。
