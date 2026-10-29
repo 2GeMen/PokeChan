@@ -16,13 +16,18 @@ log = logging.getLogger("stackchan-tools")
 for noisy in ("httpx", "ddgs", "primp"):
     logging.getLogger(noisy).setLevel(logging.WARNING)
 
-# Home, used when no city is given. Set POKECHAN_HOME_NAME / _LAT / _LON / _TZ to your own;
-# the default is Shanghai.
+# Home, used when no city is given. POKECHAN_HOME_NAME / _LAT / _LON are required;
+# _TZ is optional ("auto" lets Open-Meteo pick it from the coordinates).
+_missing = [k for k in ("POKECHAN_HOME_NAME", "POKECHAN_HOME_LAT", "POKECHAN_HOME_LON")
+            if not os.environ.get(k, "").strip()]
+if _missing:
+    raise SystemExit(f"Set {', '.join(_missing)} to your home city first "
+                     "(see docs/pokechan/mcp-server.md).")
 HOME = {
-    "name": os.environ.get("POKECHAN_HOME_NAME", "上海"),
-    "latitude": float(os.environ.get("POKECHAN_HOME_LAT", "31.2304")),
-    "longitude": float(os.environ.get("POKECHAN_HOME_LON", "121.4737")),
-    "timezone": os.environ.get("POKECHAN_HOME_TZ", "Asia/Shanghai"),
+    "name": os.environ["POKECHAN_HOME_NAME"].strip(),
+    "latitude": float(os.environ["POKECHAN_HOME_LAT"]),
+    "longitude": float(os.environ["POKECHAN_HOME_LON"]),
+    "timezone": os.environ.get("POKECHAN_HOME_TZ", "").strip() or "auto",
 }
 REPLY_MAX = 1500   # characters back to the model; it reads them out, so keep it short
 

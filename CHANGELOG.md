@@ -17,7 +17,8 @@ First public release. 首个公开版本。
 - **Muse 桥**：把 Muse Gadget SDK 的会话移植进固件，异步 MCP 工具让答案在同一轮对话里念出来。
   Muse bridge with same-turn async answers.
 - **Mac 端 MCP 服务**：免费的天气（Open-Meteo）、网页搜索和新闻搜索。
-  Mac-side MCP server for weather, web and news search.
+  安装时需要设置自己所在的城市（`POKECHAN_HOME_NAME` / `_LAT` / `_LON`），见 [docs/pokechan/mcp-server.md](docs/pokechan/mcp-server.md)。
+  Mac-side MCP server for weather, web and news search; your home city is a required setting.
 - **工具**：脸盘素材生成器、Muse 令牌迁移工具、串口调试命令（`>face=`、`>expr=`、`>move=`、`>head`、`>gestures=`、`>snap`、`>mem` 等）、宣传片和封面制作工具（`tools/promo/`）。
   Art generator, Muse token tool, debug console, promo pipeline.
 
@@ -27,5 +28,3 @@ First public release. 首个公开版本。
   The screen font has no CJK glyphs.
 - Muse 服务（`hatch.metaaivm.com`）偶尔连不上，这时问 Muse 会返回"CAN'T REACH MUSE"。
   Muse is sometimes unreachable.
-- Mac 端工具的默认城市需要通过环境变量设置为你自己的城市，见 [docs/pokechan/mcp-server.md](docs/pokechan/mcp-server.md)。
-  Set your home city for the Mac tools.

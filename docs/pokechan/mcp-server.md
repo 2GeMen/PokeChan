@@ -32,12 +32,11 @@ StackChan ──▶ xiaozhi.me 大模型 ──(MCP 接入点, WebSocket)──�
 
    这个地址里带着访问令牌，拿到它的人就能往你的 StackChan 上挂工具，**不要分享，也不要提交**。
 
-2. 设置"家"所在的城市（不问城市名时用这里的天气），然后安装：
+2. 设置"家"所在的城市（不问城市名时用这里的天气），然后安装。城市名和经纬度必填，没设置时 `install.sh` 会提示并退出。下面以上海为例，换成你自己的城市；经纬度可以在地图应用里查，也可以用 [Open-Meteo 地理编码](https://open-meteo.com/en/docs/geocoding-api)查：
 
    ```bash
    cd mcp-server
-   POKECHAN_HOME_NAME=上海 POKECHAN_HOME_LAT=31.2304 POKECHAN_HOME_LON=121.4737 \
-   POKECHAN_HOME_TZ=Asia/Shanghai ./install.sh
+   POKECHAN_HOME_NAME=上海 POKECHAN_HOME_LAT=31.2304 POKECHAN_HOME_LON=121.4737 ./install.sh
    ```
 
    `install.sh` 会：
@@ -59,6 +58,7 @@ launchctl bootout gui/$(id -u)/com.pokechan.mcp              # 停止并卸载
 ```bash
 cd mcp-server
 uv venv --python 3.12 .venv && uv pip install --python .venv/bin/python -r pyproject.toml
+POKECHAN_HOME_NAME=上海 POKECHAN_HOME_LAT=31.2304 POKECHAN_HOME_LON=121.4737 \
 POKECHAN_ENDPOINT_FILE=~/.config/pokechan/mcp_endpoint.txt .venv/bin/python mcp_pipe.py
 ```
 
@@ -69,9 +69,9 @@ Linux 可以用 systemd 的用户服务托管同样的命令。
 | 环境变量 | 默认值 | 说明 |
 | --- | --- | --- |
 | `POKECHAN_ENDPOINT_FILE` | `~/esp/stackchan_mcp_endpoint.txt` | 接入点地址文件（也可以直接作为 `mcp_pipe.py` 的第一个参数传入） |
-| `POKECHAN_HOME_NAME` | 上海 | "家"所在城市的名字，会写进工具说明，也会在回答里念出来 |
-| `POKECHAN_HOME_LAT` / `_LON` | 31.2304 / 121.4737 | "家"的经纬度 |
-| `POKECHAN_HOME_TZ` | Asia/Shanghai | "家"的时区 |
+| `POKECHAN_HOME_NAME` | 无，必填 | "家"所在城市的名字，会写进工具说明，也会在回答里念出来 |
+| `POKECHAN_HOME_LAT` / `_LON` | 无，必填 | "家"的经纬度 |
+| `POKECHAN_HOME_TZ` | `auto` | "家"的时区，如 `Asia/Shanghai`；不填时由 Open-Meteo 按经纬度自动判断 |
 
 ## 设计细节
 
