@@ -16,13 +16,25 @@
 #include <sys/time.h>
 #include <esp_sntp.h>
 #include <atomic>
+#include <muse_bridge.h>
 
 static std::string _tag = "Network";
+
+// Until SNTP has synced, the clock can be off by the time zone: xiaozhi's OTA
+// check sets it to local time as if it were UTC.
+static std::atomic<bool> _time_synced{false};
 
 static void time_sync_notification_cb(struct timeval*)
 {
     mclog::tagInfo(_tag, "SNTP time synchronized");
     GetHAL().syncSystemTimeToRtc();
+    _time_synced = true;
+    muse_bridge_clock_synced();
+}
+
+bool Hal::timeSynced()
+{
+    return _time_synced;
 }
 
 void Hal::startSntp()

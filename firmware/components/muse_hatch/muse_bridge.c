@@ -77,7 +77,7 @@ static void print_result(bool brief)
     if (!text) {
         return;
     }
-    int age = brief ? muse_bridge_brief(text, RESULT_MAX)
+    int age = brief ? muse_bridge_brief(text, RESULT_MAX, false)
                     : muse_bridge_last_answer(question, sizeof(question), text, RESULT_MAX);
     for (char *p = text; *p; p++) {
         if (*p == '\n' || *p == '\r') {
@@ -126,7 +126,7 @@ static void command(char *line, bool whole)
         printf("@ask %s\n", muse_bridge_ask(line + 4) ? "queued" : "error");
         fflush(stdout);
     } else if (!strcmp(line, "brief=refresh")) {
-        muse_bridge_refresh_brief();
+        muse_bridge_refresh_brief(true);
         printf("@brief refreshing\n");
         fflush(stdout);
     } else if (!strcmp(line, "brief") || !strcmp(line, "answer")) {

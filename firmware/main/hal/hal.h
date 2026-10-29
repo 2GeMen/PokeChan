@@ -279,6 +279,7 @@ public:
     void startNetwork(std::function<void(std::string_view)> onLog);
     WifiStatus getWifiStatus();
     void startSntp();
+    bool timeSynced();  // SNTP has set the clock since boot
 
     /* -------------------------------- App center ------------------------------- */
     app_center::AppInfoList_t fetchAppList();

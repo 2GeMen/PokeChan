@@ -10,19 +10,36 @@
 // #include <mooncake_log.h>
 #include <hal/hal.h>
 #include <cstdint>
+#include <ctime>
+#include <iterator>
+#include <memory>
 
 namespace stackchan {
 
 /**
- * @brief
+ * @brief Head motion while xiaozhi is idle.
  *
+ * Random: a move every interval_min..interval_max ms (the original behavior).
+ * Hourly: the head settles in the rest pose and stays still, then looks around
+ * once on the hour, during the day only, so it doesn't disturb anyone.
  */
 class IdleMotionModifier : public Modifier {
 public:
+    static constexpr int REST_PITCH  = 200;  // looking ahead
+    static constexpr int QUIET_FROM  = 23;   // hourly: no motion from 23:00 ...
+    static constexpr int QUIET_UNTIL = 7;    // ... until 07:00 (local time)
+
     IdleMotionModifier(uint32_t interval_min = 4000, uint32_t interval_max = 8000)
         : _interval_min(interval_min), _interval_max(interval_max)
     {
         _next_tick = GetHAL().millis() + 1000;  // 启动 1 秒后开始第一次动作
+    }
+
+    static std::unique_ptr<IdleMotionModifier> hourly()
+    {
+        auto m     = std::make_unique<IdleMotionModifier>();
+        m->_hourly = true;
+        return m;
     }
 
     void pause()
@@ -42,6 +59,11 @@ public:
         if (_paused || !stackchan.hasAvatar()) return;
 
         uint32_t now = GetHAL().millis();
+
+        if (_hourly) {
+            update_hourly(stackchan, now);
+            return;
+        }
 
         // 如果时间没到，直接跳过
         if (now < _next_tick) {
@@ -64,6 +86,67 @@ public:
     }
 
 private:
+    struct Step {
+        uint16_t t;  // ms from the start of the look-around
+        int16_t yaw;
+        int16_t pitch;
+        uint16_t speed;
+    };
+    // Left, right, up, then back to rest: about 5 s, at gentle speeds.
+    static constexpr Step LOOK_AROUND[] = {
+        {0, -350, 320, 200}, {1500, 350, 320, 200}, {3000, 0, 480, 200}, {4300, 0, REST_PITCH, 150}};
+
+    // Local hour (0-23), or -1 until SNTP has set the clock.
+    static int local_hour()
+    {
+        time_t t = time(nullptr);
+        if (!GetHAL().timeSynced() || t < 1735689600) {  // 2025-01-01
+            return -1;
+        }
+        struct tm tm;
+        localtime_r(&t, &tm);
+        return tm.tm_hour;
+    }
+
+    void update_hourly(Modifiable& stackchan, uint32_t now)
+    {
+        auto& motion = stackchan.motion();
+        if (now < _next_tick || motion.isModifyLocked()) {
+            return;
+        }
+        if (!_rested) {
+            // Settle once when idle starts, then keep still.
+            motion.moveWithSpeed(0, REST_PITCH, 150);
+            _rested    = true;
+            _last_hour = local_hour();
+            _next_tick = now + 1000;
+            return;
+        }
+        if (_step >= 0) {
+            const Step& k = LOOK_AROUND[_step];
+            if (now - _look_start < k.t) {
+                return;
+            }
+            motion.moveWithSpeed(k.yaw, k.pitch, k.speed);
+            _step = _step + 1 < (int)std::size(LOOK_AROUND) ? _step + 1 : -1;
+            return;
+        }
+        // On the hour: checked once a second.
+        _next_tick = now + 1000;
+        int hour   = local_hour();
+        if (hour < 0 || hour == _last_hour) {
+            return;
+        }
+        bool first = _last_hour < 0;  // the clock just got set: not an hour turning
+        _last_hour = hour;
+        if (first || hour >= QUIET_FROM || hour < QUIET_UNTIL) {
+            return;
+        }
+        _step       = 0;
+        _look_start = now;
+        _next_tick  = now;
+    }
+
     void perform_idle_motion(Modifiable& stackchan)
     {
         auto& motion = stackchan.motion();
@@ -116,6 +199,12 @@ private:
     uint32_t _interval_max;
     uint32_t _next_tick = 0;
     bool _paused        = false;
+
+    bool _hourly         = false;
+    bool _rested         = false;
+    int _last_hour       = -1;
+    int _step            = -1;  // in LOOK_AROUND, -1: not looking around
+    uint32_t _look_start = 0;
 };
 
 }  // namespace stackchan

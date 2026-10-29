@@ -4,9 +4,11 @@
  * Muse answers in 10-60 s (longer when it looks at the calendar or mail), far
  * too long to hold xiaozhi's main thread, so questions are asked here, one at a
  * time, on a task of their own: muse_bridge_ask() queues one and returns, and
- * the answer goes to the callback when it comes. The same task keeps a brief
- * of the user's day (calendar and important mail) fresh, so the common
- * question can be answered at once from it.
+ * the answer goes to the callback when it comes. The same task asks once a
+ * day for a brief of the user's day (calendar and important mail), so the
+ * common question can be answered at once from it. Every brief is a message in
+ * the user's Muse chat, so it is asked no more than that, and kept in NVS so a
+ * reboot doesn't ask again.
  *
  * Replies are collected from muse_hatch_console, which the chat session calls
  * for every piece of a typed turn.
@@ -15,6 +17,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 
 #include "esp_heap_caps.h"
 #include "esp_log.h"
@@ -24,6 +27,7 @@
 #include "freertos/queue.h"
 #include "freertos/semphr.h"
 #include "freertos/task.h"
+#include "nvs.h"
 
 #include "muse_bridge.h"
 #include "muse_chat.h"
@@ -33,9 +37,11 @@ static const char *TAG = "muse_ask";
 #define ANSWER_MAX 3072
 #define QUESTION_MAX 512
 #define TURN_TIMEOUT_MS (6 * 60 * 1000)         /* the session gives up after 5 min */
-#define BRIEF_EVERY_US (60 * 60 * 1000000LL)
-#define BRIEF_RETRY_US (5 * 60 * 1000000LL)
-#define BRIEF_FIRST_US (30 * 1000000LL)         /* after boot: just after Muse may connect (25 s) */
+#define BRIEF_HOUR 6                            /* local time: the day's brief is asked after this */
+#define BRIEF_TRIES 3                           /* briefs asked a day at most, failed ones included */
+#define BRIEF_RETRY_US (15 * 60 * 1000000LL)
+#define CLOCK_VALID 1735689600                  /* 2025-01-01: before this the clock isn't set yet */
+#define NVS_NS "muse_hatch"                     /* shared with muse_hatch_shim.c */
 
 #define BRIEF_PROMPT                                                                         \
     "请用简短自然的中文口语，总结我今天和明天日历上的安排，再提一下过去一天里需要我注意的" \
@@ -45,7 +51,7 @@ static const char *TAG = "muse_ask";
     "\n\n（这是我通过桌面机器人 StackChan 用语音问的。请用简短自然的中文口语回答，" \
     "不超过120字，不要用列表、编号或Markdown。）"
 
-typedef enum { JOB_ASK, JOB_BRIEF } job_kind_t;
+typedef enum { JOB_ASK, JOB_BRIEF, JOB_BRIEF_FORCE } job_kind_t;
 
 typedef struct {
     job_kind_t kind;
@@ -65,8 +71,20 @@ static size_t s_turn_len;
 
 /* Results, guarded by s_mutex. */
 static char *s_answer, *s_question, *s_brief;
-static int64_t s_answer_us, s_brief_us;
+static int64_t s_answer_us;
+static time_t s_brief_at;   /* wall clock, 0: none */
 static volatile bool s_busy;
+
+/* Today's briefs so far, on the ask task. */
+static int s_tries_day, s_tries;
+static int64_t s_retry_us;
+
+/* Saves the brief: on the esp_timer task, since writing flash disables the
+ * cache and this task's stack is in PSRAM. */
+static esp_timer_handle_t s_save_timer;
+
+/* The clock is only trusted once SNTP has set it (see muse_bridge_clock_synced). */
+static volatile bool s_clock_synced;
 
 static int64_t now_us(void)
 {
@@ -150,15 +168,98 @@ static void store(char **slot, const char *text)
     xSemaphoreGive(s_mutex);
 }
 
+/* The local day of `t` as yyyymmdd, or 0 while the clock isn't set. */
+static int local_day(time_t t, int *hour)
+{
+    if (!s_clock_synced || t < CLOCK_VALID) {
+        return 0;
+    }
+    struct tm tm;
+    localtime_r(&t, &tm);
+    if (hour) {
+        *hour = tm.tm_hour;
+    }
+    return (tm.tm_year + 1900) * 10000 + (tm.tm_mon + 1) * 100 + tm.tm_mday;
+}
+
+static bool brief_is_today(void)
+{
+    int today = local_day(time(NULL), NULL);
+    return today && s_brief_at && local_day(s_brief_at, NULL) == today;
+}
+
+static void brief_load(void)
+{
+    nvs_handle_t h;
+    if (nvs_open(NVS_NS, NVS_READONLY, &h) != ESP_OK) {
+        return;
+    }
+    size_t len = ANSWER_MAX;
+    int64_t at = 0;
+    if (nvs_get_i64(h, "brief_at", &at) == ESP_OK && nvs_get_str(h, "brief", s_brief, &len) == ESP_OK) {
+        s_brief_at = (time_t)at;
+    } else {
+        s_brief[0] = '\0';
+    }
+    nvs_close(h);
+}
+
+static void brief_save(void *arg)
+{
+    (void)arg;
+    nvs_handle_t h;
+    if (nvs_open(NVS_NS, NVS_READWRITE, &h) != ESP_OK) {
+        return;
+    }
+    xSemaphoreTake(s_mutex, portMAX_DELAY);
+    bool ok = nvs_set_str(h, "brief", s_brief) == ESP_OK && nvs_set_i64(h, "brief_at", s_brief_at) == ESP_OK;
+    xSemaphoreGive(s_mutex);
+    if (!ok || nvs_commit(h) != ESP_OK) {
+        ESP_LOGE(TAG, "can't save the brief");
+    }
+    nvs_close(h);
+}
+
 static void do_brief(void)
 {
-    bool ok = run_turn(BRIEF_PROMPT);
-    if (ok) {
-        store(&s_brief, s_turn_text);
+    if (run_turn(BRIEF_PROMPT)) {
         xSemaphoreTake(s_mutex, portMAX_DELAY);
-        s_brief_us = now_us();
+        strlcpy(s_brief, s_turn_text, ANSWER_MAX);
+        s_brief_at = time(NULL);
         xSemaphoreGive(s_mutex);
+        esp_timer_start_once(s_save_timer, 1000);
+        s_retry_us = 0;
+    } else {
+        s_retry_us = now_us() + BRIEF_RETRY_US;
     }
+}
+
+/*
+ * Asks for today's brief if it's time: once a day after BRIEF_HOUR, or earlier
+ * when the user asked for it (`asked`), and at most BRIEF_TRIES times a day.
+ * Nothing is asked while the clock isn't set or Muse isn't connected, since
+ * that wouldn't reach the chat anyway.
+ */
+static void maybe_brief(bool asked)
+{
+    int hour = 0;
+    int today = local_day(time(NULL), &hour);
+    if (!today || !muse_hatch_ready() || brief_is_today()) {
+        return;
+    }
+    if (today != s_tries_day) {
+        s_tries_day = today;
+        s_tries = 0;
+        s_retry_us = 0;
+    }
+    if (s_tries >= BRIEF_TRIES || (!asked && (hour < BRIEF_HOUR || now_us() < s_retry_us))) {
+        return;
+    }
+    s_tries++;
+    ESP_LOGI(TAG, "asking for the brief (%d today)", s_tries);
+    s_busy = true;
+    do_brief();
+    s_busy = false;
 }
 
 static void do_ask(char *question)
@@ -187,26 +288,20 @@ static void do_ask(char *question)
 static void ask_task(void *arg)
 {
     (void)arg;
-    int64_t next_brief = now_us() + BRIEF_FIRST_US;
     for (;;) {
         job_t job;
-        if (xQueueReceive(s_jobs, &job, pdMS_TO_TICKS(10000)) == pdTRUE) {
+        if (xQueueReceive(s_jobs, &job, pdMS_TO_TICKS(10000)) != pdTRUE) {
+            maybe_brief(false);
+        } else if (job.kind == JOB_ASK) {
             s_busy = true;
-            if (job.kind == JOB_ASK) {
-                do_ask(job.text);
-            } else {
-                do_brief();
-                next_brief = now_us() + (s_brief_us ? BRIEF_EVERY_US : BRIEF_RETRY_US);
-            }
+            do_ask(job.text);
             s_busy = false;
-            continue;
-        }
-        if (now_us() >= next_brief) {
+        } else if (job.kind == JOB_BRIEF) {
+            maybe_brief(true);
+        } else {   /* from the debug console: now, whatever the day's count */
             s_busy = true;
             do_brief();
             s_busy = false;
-            int64_t age = now_us() - s_brief_us;
-            next_brief = now_us() + (s_brief_us && age < BRIEF_EVERY_US ? BRIEF_EVERY_US : BRIEF_RETRY_US);
         }
     }
 }
@@ -224,9 +319,15 @@ void muse_bridge_ask_start(void)
         ESP_LOGE(TAG, "out of memory");
         return;
     }
+    brief_load();
+    const esp_timer_create_args_t save_args = { .callback = brief_save, .name = "muse_brief_save" };
+    if (esp_timer_create(&save_args, &s_save_timer) != ESP_OK) {
+        ESP_LOGE(TAG, "save timer failed");
+        return;
+    }
     muse_hatch_console_hook = on_console;
     /* PSRAM stack: internal RAM is what xiaozhi runs short of, and this task
-     * never touches flash. */
+     * never touches flash (the brief is saved by s_save_timer). */
     if (xTaskCreatePinnedToCoreWithCaps(ask_task, "muse_ask", 6144, NULL, 4, NULL, tskNO_AFFINITY,
                                         MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT) != pdPASS) {
         ESP_LOGE(TAG, "task failed");
@@ -255,10 +356,10 @@ bool muse_bridge_ask(const char *question)
     return true;
 }
 
-void muse_bridge_refresh_brief(void)
+void muse_bridge_refresh_brief(bool force)
 {
     if (s_jobs) {
-        job_t job = { JOB_BRIEF, NULL };
+        job_t job = { force ? JOB_BRIEF_FORCE : JOB_BRIEF, NULL };
         xQueueSend(s_jobs, &job, 0);
     }
 }
@@ -273,7 +374,13 @@ static int age_s(int64_t at)
     return at ? (int)((now_us() - at) / 1000000) : -1;
 }
 
-int muse_bridge_brief(char *out, size_t cap)
+static int brief_age_s(void)
+{
+    time_t t = time(NULL);
+    return s_brief_at && t >= CLOCK_VALID ? (int)(t - s_brief_at) : -1;
+}
+
+int muse_bridge_brief(char *out, size_t cap, bool today_only)
 {
     if (!s_brief) {
         out[0] = '\0';
@@ -281,8 +388,13 @@ int muse_bridge_brief(char *out, size_t cap)
     }
     xSemaphoreTake(s_mutex, portMAX_DELAY);
     strlcpy(out, s_brief, cap);
-    int age = age_s(s_brief_us);
+    int age = brief_age_s();
+    bool today = brief_is_today();
     xSemaphoreGive(s_mutex);
+    if (today_only && !today) {
+        out[0] = '\0';
+        return -1;
+    }
     return age;
 }
 
@@ -303,4 +415,9 @@ int muse_bridge_last_answer(char *question, size_t qcap, char *answer, size_t ac
 void muse_bridge_set_answer_cb(muse_bridge_answer_cb_t cb)
 {
     s_answer_cb = cb;
+}
+
+void muse_bridge_clock_synced(void)
+{
+    s_clock_synced = true;
 }

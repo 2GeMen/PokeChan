@@ -31,8 +31,8 @@ void muse_bridge_start(void);
 /*
  * Questions for Muse from the rest of the firmware (muse_ask.c). Muse takes
  * 10-60 s, so asking only queues the question; the answer goes to the callback
- * (on the asking task) when it comes. A brief of the user's day is kept fresh
- * in the background, hourly.
+ * (on the asking task) when it comes. A brief of the user's day is asked once
+ * a day in the background (each one is a message in the user's Muse chat).
  */
 typedef void (*muse_bridge_answer_cb_t)(const char *question, const char *answer);
 
@@ -40,13 +40,17 @@ typedef void (*muse_bridge_answer_cb_t)(const char *question, const char *answer
 bool muse_bridge_ask(const char *question);
 /* A question or brief is being asked, or waiting to be. */
 bool muse_bridge_busy(void);
-/* Asks for a new brief now. */
-void muse_bridge_refresh_brief(void);
-/* Copies the brief; returns its age in seconds, or -1 if there isn't one yet. */
-int muse_bridge_brief(char *out, size_t cap);
+/* Asks for today's brief if there isn't one yet (within the daily limit);
+ * `force` asks for a new one now regardless (debug console). */
+void muse_bridge_refresh_brief(bool force);
+/* Copies the brief; returns its age in seconds, or -1 if there isn't one
+ * (with `today_only`, one from today). */
+int muse_bridge_brief(char *out, size_t cap, bool today_only);
 /* Copies the last question and Muse's answer; returns the answer's age in seconds, or -1. */
 int muse_bridge_last_answer(char *question, size_t qcap, char *answer, size_t acap);
 void muse_bridge_set_answer_cb(muse_bridge_answer_cb_t cb);
+/* SNTP has set the clock: until then the brief's daily schedule waits. */
+void muse_bridge_clock_synced(void);
 
 /* Handles console commands the bridge doesn't know (">name..."): return true if handled.
  * Called on the console task. */

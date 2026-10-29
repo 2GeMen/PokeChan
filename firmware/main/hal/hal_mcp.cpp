@@ -76,10 +76,10 @@ static void _add_muse_tools(McpServer& mcp_server)
         "然后用自然的口语转述。",
         std::vector<Property>{}, [](const PropertyList&) -> ReturnValue {
             std::string brief(3072, '\0');
-            int age = muse_bridge_brief(brief.data(), brief.size());
+            int age = muse_bridge_brief(brief.data(), brief.size(), true);
             brief.resize(strlen(brief.c_str()));
             if (age < 0 || brief.empty()) {
-                muse_bridge_refresh_brief();
+                muse_bridge_refresh_brief(false);
                 return std::string("Muse 的日程简报还在准备，大约一分钟后再问一次。也可以用 self.muse.ask 直接问 Muse。");
             }
             return fmt::format("{}\n（这是 {} 分钟前从 Muse 获取的）", brief, age / 60);

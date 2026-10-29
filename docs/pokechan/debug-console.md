@@ -14,7 +14,8 @@ PokeChan 复用 StackChan 的 USB 串口（USB-Serial-JTAG，115200）。在串�
 | `>chat=TEXT` / `>chat+=TEXT` | 用打字的方式问 Muse，回复会以多行 `@chat {...}` 的形式流式返回（和 SDK 的 `chat.py` 兼容） |
 | `>chat.cancel` | 取消正在进行的打字提问 |
 | `>ask=TEXT` | 用语音工具同样的方式提问（带口语化的提示词） |
-| `>brief` / `>brief=refresh` | 打印缓存的简报 / 立即刷新简报 |
+| `>tz` / `>tz=POSIX` | 打印时区和本地时间 / 设置时区，例如 `>tz=CST-8`（北京时间）、`>tz=PST8PDT,M3.2.0,M11.1.0`（美国太平洋时间），保存在 NVS，和设置里选时区的效果一样 |
+| `>brief` / `>brief=refresh` | 打印缓存的简报 / 立即重新要一份简报（不受每天一次的限制，会出现在 Muse 聊天记录里） |
 | `>answer` | 打印最近一次的回答 |
 
 ## 脸盘与显示

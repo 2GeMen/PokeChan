@@ -631,7 +631,7 @@ static void print_snapshot()
 }
 
 // Debug console commands: ">face=NAME", ">say=TEXT", ">expr=NAME", ">move=NAME", ">head", ">gestures=on|off",
-// ">snap", ">mem"
+// ">tz[=POSIX]", ">snap", ">mem"
 static bool on_console_command(const char* line)
 {
     std::string cmd(line);
@@ -692,6 +692,19 @@ static bool on_console_command(const char* line)
         fflush(stdout);
         return true;
     }
+    // ">tz" prints the time zone and local time; ">tz=POSIX" sets it (as the setup app does)
+    if (cmd.rfind("tz", 0) == 0) {
+        if (cmd.rfind("tz=", 0) == 0) {
+            GetHAL().setTimezone(cmd.substr(3));
+        }
+        time_t t = time(nullptr);
+        struct tm tm;
+        localtime_r(&t, &tm);
+        printf("@tz %s %04d-%02d-%02d %02d:%02d\n", GetHAL().getTimezone().c_str(), tm.tm_year + 1900, tm.tm_mon + 1,
+               tm.tm_mday, tm.tm_hour, tm.tm_min);
+        fflush(stdout);
+        return true;
+    }
     if (cmd == "snap") {
         Application::GetInstance().Schedule([]() { print_snapshot(); });
         return true;
@@ -724,15 +737,15 @@ void StackChanAvatarDisplay::CreateIdleMotionModifier()
         case 0:
             idle_motion_modifier_id_ = -1;
             return;
-        case 1:
-            idle_motion_modifier_id_ = stackchan.addModifier(std::make_unique<IdleMotionModifier>(8000, 12000));
-            return;
         case 3:
-            idle_motion_modifier_id_ = stackchan.addModifier(std::make_unique<IdleMotionModifier>(2000, 4000));
+            // High: the original random look-around every few seconds.
+            idle_motion_modifier_id_ = stackchan.addModifier(std::make_unique<IdleMotionModifier>());
             return;
+        case 1:
         case 2:
         default:
-            idle_motion_modifier_id_ = stackchan.addModifier(std::make_unique<IdleMotionModifier>());
+            // Low / Medium: keep still and look around on the hour, so it doesn't disturb anyone.
+            idle_motion_modifier_id_ = stackchan.addModifier(IdleMotionModifier::hourly());
             return;
     }
 }
@@ -944,6 +957,11 @@ void StackChanAvatarDisplay::SetStatus(const char* status)
     bool is_listening = false;
 
     if (strcmp(status, Lang::Strings::LISTENING) == 0) {
+        is_listening = true;
+        if (_is_xiaozhi_idle && !motion.isModifyLocked()) {
+            // Woken up: look up at whoever called.
+            motion.moveWithSpeed(0, 450, 350);
+        }
         if (speaking_modifier_id_ >= 0) {
             // Start speaking
             stackchan.removeModifier(speaking_modifier_id_);
