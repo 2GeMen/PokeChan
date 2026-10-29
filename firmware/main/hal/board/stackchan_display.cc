@@ -956,12 +956,14 @@ void StackChanAvatarDisplay::SetStatus(const char* status)
     bool is_idle      = false;
     bool is_listening = false;
 
+    // Woken up (connecting, or listening when the channel was still open): look up at whoever called.
+    if (_is_xiaozhi_idle && !motion.isModifyLocked() &&
+        (strcmp(status, Lang::Strings::CONNECTING) == 0 || strcmp(status, Lang::Strings::LISTENING) == 0)) {
+        motion.moveWithSpeed(0, 450, 350);
+    }
+
     if (strcmp(status, Lang::Strings::LISTENING) == 0) {
         is_listening = true;
-        if (_is_xiaozhi_idle && !motion.isModifyLocked()) {
-            // Woken up: look up at whoever called.
-            motion.moveWithSpeed(0, 450, 350);
-        }
         if (speaking_modifier_id_ >= 0) {
             // Start speaking
             stackchan.removeModifier(speaking_modifier_id_);
