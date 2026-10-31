@@ -14,8 +14,10 @@ First public release. 首个公开版本。
   Head gestures that follow the emotion; can be turned off by voice.
 - **更安静的待机**：待机时头保持不动，只在白天整点活动一下（晚 11 点到早 7 点不动），被唤醒时抬头看人。
   Quieter idle: the head keeps still, looks around on the hour in the daytime, and looks up when woken.
-- **唤醒更灵**："Hi Stack Chan" 的唤醒门槛从 0.585 调到 0.50，实测唤醒率从 7/10 提高到 20/20，没有发现误唤醒。
-  Wake word threshold 0.585 → 0.50: 7/10 → 20/20 in testing, no false wakes.
+- **说"休息吧"就结束对话**：设备识别这类短句，说完回答就回到待机，不再依赖云端。
+  Dismissals such as "休息吧" end the session on the device.
+- **唤醒门槛可调**：调试命令 `>wake`，默认仍是模型的 0.585。
+  Wake word threshold tuning through `>wake`; the model's 0.585 stays the default.
 - **技能图标**：调用工具时显示思考表情，并弹出天气、新闻、搜索、Muse、提醒、拍照等图标；去掉了显示不了中文的文字气泡。
   Skill badges while tools run; the broken text bubble is gone.
 - **Muse 桥**：把 Muse Gadget SDK 的会话移植进固件，异步 MCP 工具让答案在同一轮对话里念出来。
@@ -31,5 +33,7 @@ First public release. 首个公开版本。
 
 - 屏幕字体没有中文字形，所以系统消息（如激活码）以外的中文不在屏幕上显示。
   The screen font has no CJK glyphs.
+- "Hi Stack Chan" 的唤醒率约 7/10（单次 10 次实测）；调低门槛后电视解说会造成误唤醒。
+  The wake word catches about 7 in 10 calls; a lower threshold wakes on TV commentary.
 - Muse 服务（`hatch.metaaivm.com`）偶尔连不上，这时问 Muse 会返回"CAN'T REACH MUSE"。
   Muse is sometimes unreachable.

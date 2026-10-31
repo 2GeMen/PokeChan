@@ -1,5 +1,5 @@
 diff --git a/main/application.cc b/main/application.cc
-index d69d43d..e67514b 100644
+index d69d43d..28b3d32 100644
 --- a/main/application.cc
 +++ b/main/application.cc
 @@ -1,14 +1,15 @@
@@ -24,7 +24,29 @@ index d69d43d..e67514b 100644
  
  #include <cstring>
  #include <esp_log.h>
-@@ -399,6 +400,7 @@ void Application::CheckNewVersion() {
+@@ -20,6 +21,21 @@
+ #define TAG "Application"
+ 
+ 
++// "休息吧", "晚安", "别说了"...: a short request to stop talking. Ending the session
++// is otherwise up to the server, which often just answers and keeps listening.
++static bool IsDismissal(const std::string& text) {
++    if (text.size() > 36 || text.find("吗") != std::string::npos ||
++        text.find("不要休息") != std::string::npos || text.find("别休息") != std::string::npos) {
++        return false;
++    }
++    for (const char* word : {"休息", "再见", "拜拜", "晚安", "退下", "别说了", "不聊了", "别打扰", "不要打扰"}) {
++        if (text.find(word) != std::string::npos) {
++            return true;
++        }
++    }
++    return false;
++}
++
+ Application::Application() {
+     event_group_ = xEventGroupCreate();
+ 
+@@ -399,6 +415,7 @@ void Application::CheckNewVersion() {
      const int MAX_RETRY = 10;
      int retry_count = 0;
      int retry_delay = 10; // Initial retry delay in seconds
@@ -32,7 +54,7 @@ index d69d43d..e67514b 100644
  
      auto& board = Board::GetInstance();
      while (true) {
-@@ -441,15 +443,18 @@ void Application::CheckNewVersion() {
+@@ -441,15 +458,18 @@ void Application::CheckNewVersion() {
  
          // No new version, mark the current version as valid
          ota_->MarkCurrentVersionValid();
@@ -55,7 +77,31 @@ index d69d43d..e67514b 100644
          }
  
          // This will block the loop until the activation is done or timeout
-@@ -609,36 +614,6 @@ void Application::InitializeProtocol() {
+@@ -531,7 +551,12 @@ void Application::InitializeProtocol() {
+             } else if (strcmp(state->valuestring, "stop") == 0) {
+                 Schedule([this]() {
+                     if (GetDeviceState() == kDeviceStateSpeaking) {
+-                        if (listening_mode_ == kListeningModeManualStop) {
++                        if (end_after_reply_) {
++                            end_after_reply_ = false;
++                            ESP_LOGI(TAG, "Dismissed: closing the session");
++                            audio_service_.WaitForPlaybackQueueEmpty();
++                            protocol_->CloseAudioChannel();
++                        } else if (listening_mode_ == kListeningModeManualStop) {
+                             SetDeviceState(kDeviceStateIdle);
+                         } else {
+                             SetDeviceState(kDeviceStateListening);
+@@ -551,7 +576,8 @@ void Application::InitializeProtocol() {
+             auto text = cJSON_GetObjectItem(root, "text");
+             if (cJSON_IsString(text)) {
+                 ESP_LOGI(TAG, ">> %s", text->valuestring);
+-                Schedule([display, message = std::string(text->valuestring)]() {
++                Schedule([this, display, message = std::string(text->valuestring)]() {
++                    end_after_reply_ = IsDismissal(message);
+                     display->SetChatMessage("user", message.c_str());
+                 });
+             }
+@@ -609,36 +635,6 @@ void Application::InitializeProtocol() {
      protocol_->Start();
  }
  
@@ -92,7 +138,7 @@ index d69d43d..e67514b 100644
  void Application::Alert(const char* status, const char* message, const char* emotion, const std::string_view& sound) {
      ESP_LOGW(TAG, "Alert [%s] %s: %s", emotion, status, message);
      auto display = Board::GetInstance().GetDisplay();
-@@ -716,8 +691,13 @@ void Application::ContinueOpenAudioChannel(ListeningMode mode) {
+@@ -716,8 +712,13 @@ void Application::ContinueOpenAudioChannel(ListeningMode mode) {
          return;
      }
  
@@ -106,7 +152,7 @@ index d69d43d..e67514b 100644
              return;
          }
      }
-@@ -825,8 +805,13 @@ void Application::ContinueWakeWordInvoke(const std::string& wake_word) {
+@@ -825,8 +826,13 @@ void Application::ContinueWakeWordInvoke(const std::string& wake_word) {
          return;
      }
  
@@ -120,16 +166,24 @@ index d69d43d..e67514b 100644
              audio_service_.EnableWakeWordDetection(true);
              return;
          }
-@@ -1116,4 +1101,3 @@ void Application::ResetProtocol() {
+@@ -1116,4 +1122,3 @@ void Application::ResetProtocol() {
          protocol_.reset();
      });
  }
 -
 diff --git a/main/application.h b/main/application.h
-index 7ca7af4..1418901 100644
+index 7ca7af4..24cc576 100644
 --- a/main/application.h
 +++ b/main/application.h
-@@ -163,7 +163,6 @@ private:
+@@ -138,6 +138,7 @@ private:
+ 
+     bool has_server_time_ = false;
+     bool aborted_ = false;
++    bool end_after_reply_ = false;  // the user said to stop: close the session after this reply
+     bool assets_version_checked_ = false;
+     bool play_popup_on_listening_ = false;  // Flag to play popup sound after state changes to listening
+     int clock_ticks_ = 0;
+@@ -163,7 +164,6 @@ private:
      void CheckAssetsVersion();
      void CheckNewVersion();
      void InitializeProtocol();
@@ -317,7 +371,7 @@ index 3692e0c..7bfbc5c 100644
      // Strategy instance
      std::unique_ptr<AssetStrategy> strategy_;
 diff --git a/main/audio/wake_words/afe_wake_word.cc b/main/audio/wake_words/afe_wake_word.cc
-index 8fc5fef..37d5b4f 100644
+index 8fc5fef..5f864cf 100644
 --- a/main/audio/wake_words/afe_wake_word.cc
 +++ b/main/audio/wake_words/afe_wake_word.cc
 @@ -2,11 +2,21 @@
@@ -333,9 +387,9 @@ index 8fc5fef..37d5b4f 100644
  
 +static AfeWakeWord* s_instance = nullptr;
 +static int s_threshold_milli = 0;   // 0: the model's own
-+// PokeChan default: "Hi Stack Chan" (a TTS-trained model) caught 7/10 at the model's 0.585,
-+// 20/20 at 0.50 (near and at twice the distance), with no false wakes over 8 min of speech.
-+static constexpr int kDefaultThresholdMilli = 500;
++// Default: the model's own. 0.50 caught 20/20 against 7/10, but TV commentary woke the device
++// within minutes (0.54 too), so lowering it needs a long test in a real room.
++static constexpr int kDefaultThresholdMilli = 0;
 +static std::atomic<bool> s_count_only{false};
 +static std::atomic<int> s_hits{0};
 +
@@ -416,7 +470,7 @@ index 8fc5fef..37d5b4f 100644
      // store audio data to wake_word_pcm_
      wake_word_pcm_.emplace_back(std::vector<int16_t>(data, data + samples));
 diff --git a/main/audio/wake_words/afe_wake_word.h b/main/audio/wake_words/afe_wake_word.h
-index 6c2bf72..4d2f7d9 100644
+index 6c2bf72..45a0fef 100644
 --- a/main/audio/wake_words/afe_wake_word.h
 +++ b/main/audio/wake_words/afe_wake_word.h
 @@ -34,6 +34,16 @@ public:
@@ -425,7 +479,7 @@ index 6c2bf72..4d2f7d9 100644
  
 +    // Tuning (PokeChan debug console). Threshold in thousandths, 0 for the
 +    // model's own; it's saved in NVS (wake/threshold) and applied at start
-+    // (default 500, see afe_wake_word.cc).
++    // (default 0, see afe_wake_word.cc).
 +    static bool SetThreshold(int milli);
 +    static int GetThreshold();
 +    // Count-only test: detections are counted and logged but don't wake the device.
