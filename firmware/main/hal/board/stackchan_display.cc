@@ -22,6 +22,7 @@
 #include <application.h>
 #include <muse_bridge.h>
 #include <wake_words/afe_wake_word.h>
+#include <assets/assets.h>
 #include <esp_heap_caps.h>
 #include <algorithm>
 
@@ -289,6 +290,7 @@ void StackChanAvatarDisplay::SetupUI()
 
     auto config        = hal_bridge::get_xiaozhi_config();
     idle_motion_level_ = config.idleRandomMovementLevel;
+    Application::GetInstance().SetWakeSound(OGG_IM_HERE);
 
     ESP_LOGI(TAG, "Avatar created and started");
 }
@@ -632,7 +634,7 @@ static void print_snapshot()
 }
 
 // Debug console commands: ">face=NAME", ">say=TEXT", ">expr=NAME", ">move=NAME", ">head", ">gestures=on|off",
-// ">tz[=POSIX]", ">wake[=THRESHOLD|default|test|normal]", ">snap", ">mem"
+// ">tz[=POSIX]", ">wake[=THRESHOLD|default|test|normal|xiaozhi|stackchan]", ">snap", ">mem"
 static bool on_console_command(const char* line)
 {
     std::string cmd(line);
@@ -700,13 +702,16 @@ static bool on_console_command(const char* line)
         bool ok = true;
         if (arg == "test" || arg == "normal") {
             AfeWakeWord::SetCountOnly(arg == "test");
+        } else if (arg == "xiaozhi" || arg == "stackchan") {
+            AfeWakeWord::SetModel(arg == "xiaozhi" ? "nihaoxiaozhi" : "histackchan");  // from the next boot
         } else if (arg == "default") {
             ok = AfeWakeWord::SetThreshold(0);
         } else if (!arg.empty()) {
             ok = AfeWakeWord::SetThreshold((int)(atof(arg.c_str()) * 1000 + 0.5f));
         }
-        printf("@wake %s threshold=%d test=%s hits=%d\n", ok ? "ok" : "error", AfeWakeWord::GetThreshold(),
-               AfeWakeWord::IsCountOnly() ? "on" : "off", AfeWakeWord::Hits());
+        printf("@wake %s model=%s threshold=%d test=%s hits=%d\n", ok ? "ok" : "error",
+               AfeWakeWord::GetModel().c_str(), AfeWakeWord::GetThreshold(), AfeWakeWord::IsCountOnly() ? "on" : "off",
+               AfeWakeWord::Hits());
         fflush(stdout);
         return true;
     }

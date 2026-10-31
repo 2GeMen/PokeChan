@@ -1,5 +1,5 @@
 diff --git a/main/application.cc b/main/application.cc
-index d69d43d..28b3d32 100644
+index d69d43d..d3701d9 100644
 --- a/main/application.cc
 +++ b/main/application.cc
 @@ -1,14 +1,15 @@
@@ -166,24 +166,50 @@ index d69d43d..28b3d32 100644
              audio_service_.EnableWakeWordDetection(true);
              return;
          }
+@@ -903,7 +909,7 @@ void Application::HandleStateChangedEvent() {
+             // Play popup sound after ResetDecoder (in EnableVoiceProcessing) has been called
+             if (play_popup_on_listening_) {
+                 play_popup_on_listening_ = false;
+-                audio_service_.PlaySound(Lang::Sounds::OGG_POPUP);
++                audio_service_.PlaySound(wake_sound_.empty() ? std::string_view(Lang::Sounds::OGG_POPUP) : wake_sound_);
+             }
+             break;
+         case kDeviceStateSpeaking:
 @@ -1116,4 +1122,3 @@ void Application::ResetProtocol() {
          protocol_.reset();
      });
  }
 -
 diff --git a/main/application.h b/main/application.h
-index 7ca7af4..24cc576 100644
+index 7ca7af4..007fa4b 100644
 --- a/main/application.h
 +++ b/main/application.h
-@@ -138,6 +138,7 @@ private:
+@@ -7,6 +7,7 @@
+ #include <esp_timer.h>
+ 
+ #include <string>
++#include <string_view>
+ #include <mutex>
+ #include <deque>
+ #include <memory>
+@@ -41,6 +42,7 @@ enum AecMode {
+ 
+ class Application {
+ public:
++    void SetWakeSound(std::string_view sound) { wake_sound_ = sound; }
+     static Application& GetInstance() {
+         static Application instance;
+         return instance;
+@@ -138,6 +140,8 @@ private:
  
      bool has_server_time_ = false;
      bool aborted_ = false;
++    std::string_view wake_sound_;  // played when woken, instead of the popup sound
 +    bool end_after_reply_ = false;  // the user said to stop: close the session after this reply
      bool assets_version_checked_ = false;
      bool play_popup_on_listening_ = false;  // Flag to play popup sound after state changes to listening
      int clock_ticks_ = 0;
-@@ -163,7 +164,6 @@ private:
+@@ -163,7 +167,6 @@ private:
      void CheckAssetsVersion();
      void CheckNewVersion();
      void InitializeProtocol();
@@ -371,14 +397,16 @@ index 3692e0c..7bfbc5c 100644
      // Strategy instance
      std::unique_ptr<AssetStrategy> strategy_;
 diff --git a/main/audio/wake_words/afe_wake_word.cc b/main/audio/wake_words/afe_wake_word.cc
-index 8fc5fef..5f864cf 100644
+index 8fc5fef..277e7be 100644
 --- a/main/audio/wake_words/afe_wake_word.cc
 +++ b/main/audio/wake_words/afe_wake_word.cc
-@@ -2,11 +2,21 @@
+@@ -2,11 +2,23 @@
  #include "audio_service.h"
  #include <esp_log.h>
  #include <sstream>
 +#include <atomic>
++#include <algorithm>
++#include <cstring>
 +#include "settings.h"
  
  #define DETECTION_RUNNING_EVENT 1
@@ -387,16 +415,60 @@ index 8fc5fef..5f864cf 100644
  
 +static AfeWakeWord* s_instance = nullptr;
 +static int s_threshold_milli = 0;   // 0: the model's own
-+// Default: the model's own. 0.50 caught 20/20 against 7/10, but TV commentary woke the device
-+// within minutes (0.54 too), so lowering it needs a long test in a real room.
-+static constexpr int kDefaultThresholdMilli = 0;
++// Default for 你好小智: caught 8/10 at 0.52, 5/10 at the model's own 0.585. Not yet tested against TV
++// commentary, which woke Hi Stack Chan at 0.50.
++static constexpr int kDefaultThresholdMilli = 520;
 +static std::atomic<bool> s_count_only{false};
 +static std::atomic<int> s_hits{0};
 +
  AfeWakeWord::AfeWakeWord()
      : afe_data_(nullptr),
        wake_word_pcm_(),
-@@ -80,6 +90,10 @@ bool AfeWakeWord::Initialize(AudioCodec* codec, srmodel_list_t* models_list) {
+@@ -49,17 +61,27 @@ bool AfeWakeWord::Initialize(AudioCodec* codec, srmodel_list_t* models_list) {
+         ESP_LOGE(TAG, "Failed to initialize wakenet model");
+         return false;
+     }
++    std::vector<char*> wakenets;
+     for (int i = 0; i < models_->num; i++) {
+         ESP_LOGI(TAG, "Model %d: %s", i, models_->model_name[i]);
+         if (strstr(models_->model_name[i], ESP_WN_PREFIX) != NULL) {
+-            wakenet_model_ = models_->model_name[i];
+-            auto words = esp_srmodel_get_wake_words(models_, wakenet_model_);
+-            // split by ";" to get all wake words
+-            std::stringstream ss(words);
+-            std::string word;
+-            while (std::getline(ss, word, ';')) {
+-                wake_words_.push_back(word);
+-            }
++            wakenets.push_back(models_->model_name[i]);
++        }
++    }
++    std::string wanted = GetModel();
++    std::stable_partition(wakenets.begin(), wakenets.end(),
++                          [&](char* name) { return strstr(name, wanted.c_str()) != NULL; });
++    if (wakenets.size() > 1) {
++        wakenets.resize(1);
++    }
++    for (char* name : wakenets) {
++        wakenet_model_ = name;
++        auto words = esp_srmodel_get_wake_words(models_, wakenet_model_);
++        // split by ";" to get all wake words
++        std::stringstream ss(words);
++        std::string word;
++        while (std::getline(ss, word, ';')) {
++            wake_words_.push_back(word);
+         }
+     }
+ 
+@@ -76,10 +98,18 @@ bool AfeWakeWord::Initialize(AudioCodec* codec, srmodel_list_t* models_list) {
+     afe_config->afe_perferred_core = 1;
+     afe_config->afe_perferred_priority = 1;
+     afe_config->memory_alloc_mode = AFE_MEMORY_ALLOC_MORE_PSRAM;
++    if (!wakenets.empty()) {
++        afe_config->wakenet_model_name = strdup(wakenets[0]);
++        afe_config->wakenet_model_name_2 = nullptr;
++    }
+     
      afe_iface_ = esp_afe_handle_from_config(afe_config);
      afe_data_ = afe_iface_->create_from_config(afe_config);
  
@@ -407,13 +479,14 @@ index 8fc5fef..5f864cf 100644
      xTaskCreate([](void* arg) {
          auto this_ = (AfeWakeWord*)arg;
          this_->AudioDetectionTask();
-@@ -149,6 +163,13 @@ void AfeWakeWord::AudioDetectionTask() {
+@@ -149,6 +179,14 @@ void AfeWakeWord::AudioDetectionTask() {
          // Store the wake word data for voice recognition, like who is speaking
          StoreWakeWordData(res->data, res->data_size / sizeof(int16_t));
  
 +        if (res->wakeup_state == WAKENET_DETECTED && s_count_only) {
 +            int hits = ++s_hits;
-+            ESP_LOGI(TAG, "Wake test hit %d (threshold %d)", hits, s_threshold_milli);
++            ESP_LOGI(TAG, "Wake test hit %d: %s (threshold %d)", hits,
++                     wake_words_[res->wakenet_model_index - 1].c_str(), s_threshold_milli);
 +            printf("@wake hit %d\n", hits);
 +            fflush(stdout);
 +            continue;
@@ -421,7 +494,7 @@ index 8fc5fef..5f864cf 100644
          if (res->wakeup_state == WAKENET_DETECTED) {
              Stop();
              last_detected_wake_word_ = wake_words_[res->wakenet_model_index - 1];
-@@ -160,6 +181,47 @@ void AfeWakeWord::AudioDetectionTask() {
+@@ -160,6 +198,55 @@ void AfeWakeWord::AudioDetectionTask() {
      }
  }
  
@@ -449,6 +522,14 @@ index 8fc5fef..5f864cf 100644
 +    return true;
 +}
 +
++void AfeWakeWord::SetModel(const std::string& name) {
++    Settings("wake", true).SetString("model", name);
++}
++
++std::string AfeWakeWord::GetModel() {
++    return Settings("wake").GetString("model", "nihaoxiaozhi");
++}
++
 +int AfeWakeWord::GetThreshold() {
 +    return s_threshold_milli;
 +}
@@ -470,18 +551,22 @@ index 8fc5fef..5f864cf 100644
      // store audio data to wake_word_pcm_
      wake_word_pcm_.emplace_back(std::vector<int16_t>(data, data + samples));
 diff --git a/main/audio/wake_words/afe_wake_word.h b/main/audio/wake_words/afe_wake_word.h
-index 6c2bf72..45a0fef 100644
+index 6c2bf72..c9f8e6b 100644
 --- a/main/audio/wake_words/afe_wake_word.h
 +++ b/main/audio/wake_words/afe_wake_word.h
-@@ -34,6 +34,16 @@ public:
+@@ -34,6 +34,20 @@ public:
      bool GetWakeWordOpus(std::vector<uint8_t>& opus);
      const std::string& GetLastDetectedWakeWord() const { return last_detected_wake_word_; }
  
 +    // Tuning (PokeChan debug console). Threshold in thousandths, 0 for the
 +    // model's own; it's saved in NVS (wake/threshold) and applied at start
-+    // (default 0, see afe_wake_word.cc).
++    // (default 520, see afe_wake_word.cc).
 +    static bool SetThreshold(int milli);
 +    static int GetThreshold();
++    // Which packed model to load, part of its name; saved in NVS, takes effect after a reboot.
++    // Only one runs: two leave about 4 KB of internal RAM and the whole device crawls.
++    static void SetModel(const std::string& name);
++    static std::string GetModel();
 +    // Count-only test: detections are counted and logged but don't wake the device.
 +    static void SetCountOnly(bool on);
 +    static bool IsCountOnly();
@@ -490,7 +575,7 @@ index 6c2bf72..45a0fef 100644
  private:
      srmodel_list_t *models_ = nullptr;
      const esp_afe_sr_iface_t* afe_iface_ = nullptr;
-@@ -57,6 +67,7 @@ private:
+@@ -57,6 +71,7 @@ private:
  
      void StoreWakeWordData(const int16_t* data, size_t size);
      void AudioDetectionTask();

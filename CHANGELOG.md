@@ -16,8 +16,8 @@ First public release. 首个公开版本。
   Quieter idle: the head keeps still, looks around on the hour in the daytime, and looks up when woken.
 - **说"休息吧"就结束对话**：设备识别这类短句，说完回答就回到待机，不再依赖云端。
   Dismissals such as "休息吧" end the session on the device.
-- **唤醒门槛可调**：调试命令 `>wake`，默认仍是模型的 0.585。
-  Wake word threshold tuning through `>wake`; the model's 0.585 stays the default.
+- **默认唤醒词改为"你好小智"**：门槛 0.52，唤醒后本地说一声"我在的"；"Hi Stack Chan"可用 `>wake=stackchan` 切换。
+  The default wake word is now 你好小智 (threshold 0.52) with a local spoken reply; Hi Stack Chan stays selectable.
 - **技能图标**：调用工具时显示思考表情，并弹出天气、新闻、搜索、Muse、提醒、拍照等图标；去掉了显示不了中文的文字气泡。
   Skill badges while tools run; the broken text bubble is gone.
 - **Muse 桥**：把 Muse Gadget SDK 的会话移植进固件，异步 MCP 工具让答案在同一轮对话里念出来。
@@ -33,7 +33,9 @@ First public release. 首个公开版本。
 
 - 屏幕字体没有中文字形，所以系统消息（如激活码）以外的中文不在屏幕上显示。
   The screen font has no CJK glyphs.
-- "Hi Stack Chan" 的唤醒率约 7/10（单次 10 次实测）；调低门槛后电视解说会造成误唤醒。
-  The wake word catches about 7 in 10 calls; a lower threshold wakes on TV commentary.
+- 唤醒率约 8/10（单轮 10 次实测），还没有测过电视解说下的误唤醒。
+  The wake word catches about 8 in 10 calls; false wakes around TV commentary are untested.
+- 闲置后和服务器的连接可能断开，要等约 60 秒才重连，这段时间唤醒会失败。
+  An idle connection can drop and takes about 60 s to come back; wake fails meanwhile.
 - Muse 服务（`hatch.metaaivm.com`）偶尔连不上，这时问 Muse 会返回"CAN'T REACH MUSE"。
   Muse is sometimes unreachable.

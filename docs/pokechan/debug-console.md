@@ -14,7 +14,8 @@ PokeChan 复用 StackChan 的 USB 串口（USB-Serial-JTAG，115200）。在串�
 | `>chat=TEXT` / `>chat+=TEXT` | 用打字的方式问 Muse，回复会以多行 `@chat {...}` 的形式流式返回（和 SDK 的 `chat.py` 兼容） |
 | `>chat.cancel` | 取消正在进行的打字提问 |
 | `>ask=TEXT` | 用语音工具同样的方式提问（带口语化的提示词） |
-| `>wake` / `>wake=0.50` / `>wake=default` | 打印唤醒词门槛 / 设置门槛（保存在 NVS）/ 用模型自带的 0.585（固件默认值） |
+| `>wake` / `>wake=0.50` / `>wake=default` | 打印唤醒词门槛 / 设置门槛（保存在 NVS）/ 用模型自带的 0.585（固件默认 0.52） |
+| `>wake=xiaozhi` / `>wake=stackchan` | 选择唤醒词（保存在 NVS，重启生效）。一次只运行一个模型 |
 | `>wake=test` / `>wake=normal` | 只计数模式：喊唤醒词只打印 `@wake hit N`，不会开始对话，用来测唤醒率和误唤醒 / 恢复正常 |
 | `>tz` / `>tz=POSIX` | 打印时区和本地时间 / 设置时区，例如 `>tz=CST-8`（北京时间）、`>tz=PST8PDT,M3.2.0,M11.1.0`（美国太平洋时间），保存在 NVS，和设置里选时区的效果一样 |
 | `>brief` / `>brief=refresh` | 打印缓存的简报 / 立即重新要一份简报（不受每天一次的限制，会出现在 Muse 聊天记录里） |

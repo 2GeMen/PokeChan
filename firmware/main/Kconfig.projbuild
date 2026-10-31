@@ -684,6 +684,12 @@ config USE_MULTILINE_CHAT_MESSAGE
         When disabled (default), a single-line horizontally scrolling label
         is shown at the bottom of the screen.
 
+# esp-sr ships this real-voice model but has no Kconfig entry for it;
+# build_default_assets.py packs a model for every CONFIG_SR_WN_* set.
+config SR_WN_WN9_NIHAOXIAOZHI
+    bool "Pack 你好小智 (wn9_nihaoxiaozhi), choose it with >wake=xiaozhi"
+    default n
+
 choice WAKE_WORD_TYPE
     prompt "Wake Word Implementation Type"
     default USE_AFE_WAKE_WORD if (IDF_TARGET_ESP32S3 || IDF_TARGET_ESP32P4) && SPIRAM
