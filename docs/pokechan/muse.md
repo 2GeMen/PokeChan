@@ -32,7 +32,7 @@ PokeChan 把 [Muse Gadget SDK](https://github.com/facebookincubator/muse-gadget-
    ```
 
    脚本只打印令牌长度，文件权限是 600。
-6. 用第 2 步的备份整片写回，恢复 StackChan 原来的分区表和数据，然后刷入 PokeChan 的 app（`idf.py app-flash`）。
+6. 用第 2 步的备份整片写回，恢复 StackChan 原来的分区表和数据，然后刷入 PokeChan 的 app（`idf.py app-flash`）。如果备份比当前固件旧，资源分区也要一起重刷（唤醒词模型在里面）。
 
 ## 第二步：把令牌交给 PokeChan
 
