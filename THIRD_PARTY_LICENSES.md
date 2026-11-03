@@ -15,7 +15,8 @@ components are listed for completeness; their license files ship with them (fetc
 | ESP-IDF | v5.5.4 | Apache-2.0 | [espressif/esp-idf](https://github.com/espressif/esp-idf) | no (toolchain) |
 | LVGL | 9.4.0 | MIT | [lvgl/lvgl](https://github.com/lvgl/lvgl) | no (component manager) |
 | lodepng (inside LVGL) | LVGL's copy | zlib | [lvandeve/lodepng](https://github.com/lvandeve/lodepng) | no |
-| esp-sr (wake word "Hi Stack-chan") | per StackChan | Espressif MIT | [espressif/esp-sr](https://github.com/espressif/esp-sr) | no |
+| esp-sr (wake words 你好小智 `wn9_nihaoxiaozhi`, default, and "Hi Stack-chan") | per StackChan | Espressif MIT | [espressif/esp-sr](https://github.com/espressif/esp-sr) | no |
+| Kokoro-82M (TTS used once to make `main/assets/sfx/im_here.ogg`, the spoken 我在的 on wake; voice `zf_xiaoni`, pitched up) | v1.0 | Apache-2.0 | [hexgrad/Kokoro-82M](https://huggingface.co/hexgrad/Kokoro-82M) | the generated 0.45 s clip only |
 | xiaozhi-fonts | per StackChan | MIT | [78/xiaozhi-fonts](https://github.com/78/xiaozhi-fonts) | no |
 | mooncake, mooncake_log, smooth_ui_toolkit | v2.3.3 / v1.5.0 / v2.12.0 | MIT | [Forairaaaaa](https://github.com/Forairaaaaa) | no (`fetch_repos.py`) |
 | ArduinoJson | v7.4.2 | MIT | [bblanchon/ArduinoJson](https://github.com/bblanchon/ArduinoJson) | no |

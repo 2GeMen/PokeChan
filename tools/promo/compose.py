@@ -149,7 +149,7 @@ def overlay(frame, seg, t, dur):
         t0 = seg["end"]
         logo = text_layer("PokeChan", 120, ACCENT, "Black", tracking=2)
         tag = text_layer("一只会变身的桌面机器人。", 60, LIGHT_TEXT, "Bold")
-        gh = text_layer("开源固件  ·  GitHub 即将上线", 34, (161, 161, 166), "Medium")
+        gh = text_layer("开源固件  ·  github.com/2GeMen/PokeChan", 34, (161, 161, 166), "Medium")
         paste(frame, logo, (W - logo.width) / 2, 80, ease((t - t0) / 0.6))
         paste(frame, tag, (W - tag.width) / 2, 225, ease((t - t0 - 0.3) / 0.6))
         paste(frame, gh, (W - gh.width) / 2, H - 200, ease((t - t0 - 0.7) / 0.6))

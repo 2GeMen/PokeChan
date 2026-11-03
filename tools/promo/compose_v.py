@@ -115,7 +115,7 @@ def overlay(frame, gt, shot, lt):
         tag = C.text_layer("一只会变身的桌面机器人。", 64, LIGHT, "Bold")
         centered(frame, logo, 200, C.ease((lt - t0) / 0.4))
         centered(frame, tag, 390, C.ease((lt - t0 - 0.2) / 0.4))
-        gh = C.text_layer("开源固件  ·  GitHub 即将上线", 40, (161, 161, 166), "Medium")
+        gh = C.text_layer("开源固件  ·  github.com/2GeMen/PokeChan", 40, (161, 161, 166), "Medium")
         centered(frame, gh, 1480, C.ease((lt - t0 - 0.5) / 0.4))
         cta = tag_layer("评论区说说：你想要哪只宝可梦？", True)
         centered(frame, cta, 1555, C.ease((lt - t0 - 0.8) / 0.4))

@@ -58,7 +58,7 @@ esptool --chip esp32s3 --port /dev/cu.usbmodem101 -b 921600 write-flash 0x20000 
 ## 首次启动
 
 1. 开机后按 StackChan 原有流程配网，并在 [xiaozhi.me](https://xiaozhi.me) 激活设备（PokeChan 没有改动这一步）。
-2. 说 "Hi Stack-chan" 唤醒，然后试试"换成皮卡丘"。
+2. 说"你好小智"唤醒，然后试试"换成皮卡丘"。
 3. 想用 Muse 的话，接着看 [muse.md](muse.md)；想用 Mac 端的天气和搜索，看 [mcp-server.md](mcp-server.md)。
 
 ## 内存说明
