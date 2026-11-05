@@ -1,6 +1,6 @@
 # Changelog / 更新记录
 
-## v0.1.0 — 2026-10-31
+## v0.1.0 — 2026-11-04
 
 First public release. 首个公开版本。
 
@@ -39,3 +39,8 @@ First public release. 首个公开版本。
   An idle connection can drop and takes about 60 s to come back; wake fails meanwhile.
 - Muse 服务（`hatch.metaaivm.com`）偶尔连不上，这时问 Muse 会返回"CAN'T REACH MUSE"。
   Muse is sometimes unreachable.
+- Muse 设备令牌几天后会过期，固件还不会自动续期；过期后要按 [muse.md](docs/pokechan/muse.md) 重新配对一次。
+  The Muse device token expires after a few days and is not refreshed yet; pair again when it does.
+- 对话时内部内存偏紧（最低约 2 KB），播放偶尔会卡顿；开机后约 1 分钟内连接服务器可能失败一次。
+  Internal RAM runs low during a conversation (about 2 KB at worst), so playback can stutter; the first
+  connection after boot can fail for about a minute.
