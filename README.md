@@ -1,5 +1,7 @@
 # PokeChan
 
+> A **[锈客 · Rusted Drifter](https://xiuke.net/)** project from **[口搓铺](https://xiuke.net/projects/)** — hands-on experiments in building with AI.
+
 [中文说明](README.zh-CN.md)
 
 **PokeChan** is a community firmware mod for the [M5Stack StackChan](https://github.com/m5stack/StackChan)
