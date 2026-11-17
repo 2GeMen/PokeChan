@@ -1,5 +1,8 @@
 # PokeChan
 
+> **[锈客 · Rusted Drifter](https://xiuke.net/)** · **[口搓铺](https://xiuke.net/projects/)**  
+> 手艺生了锈，在 AI 时代重新上手。
+
 [English](README.md)
 
 **PokeChan** 是给 [M5Stack StackChan](https://github.com/m5stack/StackChan) 桌面机器人做的社区改版固件。StackChan 原有的功能都保留，另外加了：
